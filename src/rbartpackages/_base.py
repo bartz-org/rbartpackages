@@ -37,7 +37,7 @@ from rpy2.robjects.methods import RS4
 PANDAS_CONVERTER = conversion.Converter('pandas')
 try:
     from rpy2.robjects import pandas2ri
-except ImportError:
+except ImportError:  # pragma: no cover - optional dep always present in CI
     pass
 else:
     PANDAS_CONVERTER = pandas2ri.converter
@@ -47,7 +47,7 @@ POLARS_CONVERTER = conversion.Converter('polars')
 try:
     import polars as pl
     from rpy2.robjects import pandas2ri
-except ImportError:
+except ImportError:  # pragma: no cover - optional dep always present in CI
     pass
 else:
 
@@ -62,7 +62,7 @@ else:
 JAX_CONVERTER = conversion.Converter('jax')
 try:
     import jax
-except ImportError:
+except ImportError:  # pragma: no cover - optional dep always present in CI
     pass
 else:
 

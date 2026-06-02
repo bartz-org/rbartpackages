@@ -58,7 +58,14 @@ jobs:
 
       - name: Determine base ref
         id: refs
-        run: echo "from=${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || (startsWith(github.ref, 'refs/heads/') && github.event.before) || '' }}" >> "$GITHUB_OUTPUT"
+        run: |
+          from='${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || (startsWith(github.ref, 'refs/heads/') && github.event.before) || '' }}'
+          # The first push to a branch (and the extraction commit that created
+          # this repo) reports the all-zeros SHA as `before`: there is no prior
+          # commit to diff against, so blank it out and let the "all files" run
+          # below provide coverage.
+          if [ "$from" = '0000000000000000000000000000000000000000' ]; then from=''; fi
+          echo "from=$from" >> "$GITHUB_OUTPUT"
 
       - name: Run pre-commit on changed files
         # even if we run it on all files below, it's convenient to see if something fails in new changes first
@@ -117,7 +124,9 @@ jobs:
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
         with:
           distribution: temurin
-          java-version: "17"
+          # bartMachine 1.4.2 ships jars compiled for Java 21 (class file
+          # version 65); an older JRE fails with UnsupportedClassVersionError.
+          java-version: "21"
 
       - name: Install R
         uses: r-lib/actions/setup-r@a51a8012b0aab7c32ef9d19bf54da93f3254335e # v2
@@ -134,8 +143,12 @@ jobs:
 
       - name: Configure R PATHS for rpy2 (Linux only)
         run: |
+          # rpy2 embeds libR directly, so R's own `etc/ldpaths` (which adds the
+          # JVM dir to the loader path) never runs; rJava then can't find
+          # libjvm.so when bartMachine loads its namespace. Put it on the path
+          # explicitly. $JAVA_HOME is exported by the setup-java step above.
           echo "R_HOME=$(R RHOME)" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$(R RHOME)/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$(R RHOME)/lib:${JAVA_HOME}/lib/server${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
           ldd "$(R RHOME)/library/methods/libs/methods.so" || true
           uv run --dev python -c "import rpy2.situation as s; print('\n'.join(map(str, s.iter_info())))"
 
@@ -177,7 +190,9 @@ jobs:
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
         with:
           distribution: temurin
-          java-version: "17"
+          # bartMachine 1.4.2 ships jars compiled for Java 21 (class file
+          # version 65); an older JRE fails with UnsupportedClassVersionError.
+          java-version: "21"
 
       - name: Install R
         uses: r-lib/actions/setup-r@a51a8012b0aab7c32ef9d19bf54da93f3254335e # v2
@@ -194,11 +209,16 @@ jobs:
 
       - name: Configure R PATHS for rpy2
         run: |
+          # See the tests job: rpy2 bypasses R's ldpaths, so put the JVM dir on
+          # the loader path for rJava (used when docs/examples touch bartMachine).
           echo "R_HOME=$(R RHOME)" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$(R RHOME)/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$(R RHOME)/lib:${JAVA_HOME}/lib/server${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Generate benchmarks visualization
-        run: RPY2_CFFI_MODE=ABI make asv-publish
+        # asv-discover writes benchmarks.json so `asv publish` has a target even
+        # with no committed results (e.g. this fresh repo); once benchmark runs
+        # are committed it renders those too.
+        run: RPY2_CFFI_MODE=ABI make asv-discover asv-publish
 
       - name: Generate documentation
         run: RPY2_CFFI_MODE=ABI make docs docs-latest
