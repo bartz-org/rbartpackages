@@ -124,7 +124,9 @@ jobs:
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
         with:
           distribution: temurin
-          java-version: "17"
+          # bartMachine 1.4.2 ships jars compiled for Java 21 (class file
+          # version 65); an older JRE fails with UnsupportedClassVersionError.
+          java-version: "21"
 
       - name: Install R
         uses: r-lib/actions/setup-r@a51a8012b0aab7c32ef9d19bf54da93f3254335e # v2
@@ -188,7 +190,9 @@ jobs:
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
         with:
           distribution: temurin
-          java-version: "17"
+          # bartMachine 1.4.2 ships jars compiled for Java 21 (class file
+          # version 65); an older JRE fails with UnsupportedClassVersionError.
+          java-version: "21"
 
       - name: Install R
         uses: r-lib/actions/setup-r@a51a8012b0aab7c32ef9d19bf54da93f3254335e # v2
