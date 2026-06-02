@@ -61,6 +61,7 @@ help:
 	@echo "- gh-release: create draft GitHub release from docs/changelog.md"
 	@echo "- asv-machine: initialize ~/.asv-machine.json with a human-readable id"
 	@echo "- asv-run: run benchmarks on all unbenchmarked tagged releases and main"
+	@echo "- asv-discover: write benchmarks.json (discovery only) so asv-publish has a target"
 	@echo "- asv-publish: create html benchmark report"
 	@echo "- asv-preview: create html report and start server"
 	@echo "- asv-main: run benchmarks on main branch"
@@ -287,6 +288,12 @@ asv-machine:
 asv-run: ASV_REFS = $(shell $(UV_RUN) python config/refs_for_asv.py)
 asv-run: asv-machine
 	$(ASV) run --durations=all --skip-existing-successful --show-stderr "$(ASV_REFS)" $(ARGS)
+
+.PHONY: asv-discover
+asv-discover: asv-machine
+	# Write .asv/results/benchmarks.json (discovery only, no timing) using the
+	# current env, so `asv publish` has a target even with no committed results.
+	$(ASV) run --python=same --bench just-discover $(ARGS)
 
 .PHONY: asv-publish
 asv-publish:
