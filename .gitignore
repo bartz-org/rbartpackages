@@ -1,0 +1,14 @@
+# Python
+__pycache__
+dist/
+.coverage*
+coverage.xml
+diffcov.md
+.venv/
+*.prof
+
+# editor
+.zed/
+
+# Claude
+.claude/worktrees/

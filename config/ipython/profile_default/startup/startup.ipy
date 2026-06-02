@@ -1,0 +1,21 @@
+def _pre_startup():
+    with open(__file__) as f:
+        print("Startup commands:")
+        begin = False
+        for i, line in enumerate(f):
+            line = line.rstrip('\n')
+            if line == "##### BEGIN #####":
+                begin = True
+            elif begin:
+                print(f">>> {line}")
+        print()
+
+_pre_startup()
+
+##### BEGIN #####
+%load_ext autoreload
+%autoreload 2
+
+import numpy as np
+
+import rbartpackages

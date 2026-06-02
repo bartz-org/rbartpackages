@@ -1,0 +1,16 @@
+[general]
+ignore = body-is-missing
+regex-style-search = true
+
+[title-max-length]
+line-length = 50
+
+[body-max-line-length]
+line-length = 72
+
+[body-min-length]
+min-length=10
+
+[ignore-by-author-name]
+regex=\[bot\]$
+ignore=all

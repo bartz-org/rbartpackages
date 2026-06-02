@@ -1,0 +1,116 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+exclude: '^\.asv/results/.+\.json$'
+default_stages: [pre-commit]
+default_install_hook_types: [pre-commit, commit-msg, pre-merge-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-ast
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: check-executables-have-shebangs
+      - id: check-illegal-windows-names
+      - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-yaml
+      - id: destroyed-symlinks
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: forbid-submodules
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: name-tests-test
+        args: [--pytest-test-first]
+        exclude: tests/(util\.py|_.+\.py)$
+      - id: trailing-whitespace
+        exclude: '^renv/activate\.R$' # because renv edits it automatically, with trailing whitespace
+      - id: no-commit-to-branch
+  - repo: https://github.com/sbrunner/hooks
+    rev: 1.7.0
+    hooks:
+      - id: copyright
+      - id: copyright-required
+        files: \.(py|rst)$
+        exclude: src/rbartpackages/_version\.py$
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.14
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+  - repo: https://github.com/DanielNoord/pydocstringformatter
+    rev: v0.7.5
+    hooks:
+      - id: pydocstringformatter
+        # config in [tool.pydocstringformatter] (pyproject.toml); the hook
+        # already passes --write --quiet. Scoped to the library, whose numpy
+        # attribute-docstring conventions this enforces; drop `files` to widen.
+        files: ^src/rbartpackages/.*\.py$
+  - repo: https://github.com/jsh9/pydoclint
+    rev: 0.8.4
+    hooks:
+      - id: pydoclint
+  - repo: https://github.com/henryiii/validate-pyproject-schema-store
+    rev: 2026.05.24
+    hooks:
+      - id: validate-pyproject
+  - repo: https://github.com/jorisroovers/gitlint
+    rev: v0.19.1
+    hooks:
+      - id: gitlint # this is already defined to run in stage commit-msg
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.11.16
+    hooks:
+      - id: uv-lock
+  - repo: local
+    hooks:
+      - id: lint-merged-tree
+        name: full lint on the merged tree
+        # Runs only at merge time (not on ordinary commits). Gates clean
+        # auto-merges, whose merge commit git writes without invoking the
+        # `pre-commit` stage: catches a merged tree that fails the hooks even
+        # though each branch passed in isolation (e.g. a stale WORKAROUND or a
+        # hook config changed on one side). `make lint` is `pre-commit run
+        # --all-files`; nesting it here is safe (this hook is not in the
+        # pre-commit stage, so --all-files does not re-trigger it).
+        entry: make lint
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-merge-commit]
+      - id: check-workarounds
+        name: check stale WORKAROUND markers
+        entry: uv run --dev python config/check_workarounds.py
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: check-returns-docstring
+        name: forbid multi-line non-list `Returns` docstring sections
+        # Matches a numpy-style `Returns` block whose first two non-blank lines
+        # are both at the section's base indent: i.e., multi-line prose. List-
+        # form (description on a more-indented continuation line) is skipped via
+        # `(?P=i)\S`; the trailing lookahead skips the next section's header.
+        language: pygrep
+        entry: '^(?P<i>[ \t]*)Returns[ \t]*\n(?P=i)-+[ \t]*\n(?P=i)(?!""")\S[^\n]*\n(?:[ \t]*\n)*(?P=i)(?!""")(?!\w+[ \t]*\n(?P=i)-+[ \t]*$)\S'
+        args: [--multiline]
+        types: [python]
+      - id: forbid-lam-lamda
+        name: forbid `lam`/`lamda` identifier (use `lambda_` per PEP 8)
+        language: pygrep
+        entry: '\blam(da)?\b'
+        types: [python]
+      - id: forbid-dunder-all
+        name: forbid setting `__all__` in modules
+        language: pygrep
+        # matches any module-level `__all__` statement (plain/annotated/augmented
+        # assignments, `.append`/`.extend`, `del`, etc.). The `^` anchor restricts
+        # to column 0, so references inside indented code or docstrings are ignored.
+        entry: '^__all__\b'
+        types: [python]
