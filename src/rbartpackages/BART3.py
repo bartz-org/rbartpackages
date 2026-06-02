@@ -39,7 +39,10 @@ class TreeDraws(TypedDict):
     """Type of the `treedraws` attribute of `mc_gbart`."""
 
     cutpoints: dict[int | str, Float64[ndarray, ' numcut[i]']]
+    """Per-variable grid of candidate split points, keyed by column index or name."""
+
     trees: str
+    """Posterior tree ensemble serialized in BART's text format (read by `predict`)."""
 
 
 class String(AbstractDtype):
@@ -52,56 +55,136 @@ class ProcTime(NamedTuple):
     """Python representation of the output of R's `proc.time`."""
 
     user_self: float
+    """CPU seconds charged to the R process in user mode."""
+
     sys_self: float
+    """CPU seconds charged to the R process in system (kernel) mode."""
+
     elapsed: float
+    """Wall-clock seconds elapsed."""
+
     user_child: float
+    """User-mode CPU seconds of forked child processes (`mc.gbart` workers)."""
+
     sys_child: float
+    """System-mode CPU seconds of forked child processes."""
 
 
 class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatically
     _rfuncname = 'BART3::mc.gbart'
 
-    LPML: float | None = None  # log pseudo-marginal likelihood
+    LPML: float | None = None
+    """Log pseudo-marginal likelihood; ``None`` without burn-in. Unstable for BART."""
+
     accept: (
         Float64[ndarray, ' nskip+ndpost']
         | Float64[ndarray, 'nskip+ndpost/mc_cores mc_cores']
     )
+    """Per-iteration Metropolis-Hastings acceptance rate (per chain for `mc.gbart`)."""
+
     chains: int
-    grp: Float64[ndarray, ' p']  # column grouping for the sparse (DART) prior
+    """Number of MCMC chains, i.e. the `mc_cores` actually used."""
+
+    grp: Float64[ndarray, ' p']
+    """Group index of each column for the sparse (DART) variable-selection prior."""
+
     ndpost: int
+    """Number of posterior draws kept, after burn-in and thinning."""
+
     offset: float
+    """Data centering value for the response (link scale for binary)."""
+
     prob_test: None | Float64[ndarray, 'ndpost m'] = None
+    """Test-point success-probability draws (binary outcomes only)."""
+
     prob_test_lower: Float64[ndarray, ' m'] | None = None
+    """Lower `probs` quantile of `prob_test` (default 2.5%)."""
+
     prob_test_mean: None | Float64[ndarray, ' m'] = None
+    """Posterior mean of `prob_test`."""
+
     prob_test_upper: Float64[ndarray, ' m'] | None = None
+    """Upper `probs` quantile of `prob_test` (default 97.5%)."""
+
     prob_train: None | Float64[ndarray, 'ndpost n'] = None
+    """Training-point success-probability draws (binary outcomes only)."""
+
     prob_train_mean: None | Float64[ndarray, ' n'] = None
+    """Posterior mean of `prob_train`."""
+
     proc_time: ProcTime
-    rho: float  # sparse (DART) prior concentration, defaults to sum(1/grp)
+    """Timing of the fit, from R's `proc.time`."""
+
+    rho: float
+    """Concentration of the sparse (DART) prior; defaults to ``sum(1/grp)``."""
+
     rm_const: Int32[ndarray, '<=p']
-    sigest: float | None = None  # rough error SD for prior; nan from mc.gbart bug
+    """0-based indices of the `x_train` columns kept (constant columns dropped)."""
+
+    sigest: float | None = None
+    """Rough residual SD used to set the sigma prior (continuous only).
+
+    ``None`` for binary outcomes; ``nan`` when the `mc.gbart` ``mc_cores > 1``
+    bug overwrites it with a logical missing value.
+    """
+
     sigma: (
         Float64[ndarray, ' nskip+ndpost']
         | Float64[ndarray, 'nskip+ndpost/mc_cores mc_cores']
         | None
     ) = None
+    """Error-SD draws including burn-in, continuous only (per chain for `mc.gbart`)."""
+
     sigma_: Float64[ndarray, ' ndpost'] | None = None
+    """Kept `sigma` draws with burn-in dropped; ``None`` without burn-in."""
+
     sigma_mean: float | None = None
+    """Mean of `sigma_`; falls back to `sigest` when no draws are kept."""
+
     treedraws: TreeDraws
+    """Sampled trees: per-variable cutpoint grid and the serialized ensemble."""
+
     varcount: Int32[ndarray, 'ndpost p']
+    """Per-draw count of splits on each variable, summed over trees."""
+
     varcount_mean: Float64[ndarray, ' p']
+    """Posterior mean of `varcount` per variable."""
+
     varprob: Float64[ndarray, 'ndpost p']
+    """Per-draw probability assigned to each variable for splitting."""
+
     varprob_mean: Float64[ndarray, ' p']
+    """Posterior mean of `varprob` per variable."""
+
     x_test: Float64[ndarray, ' m p'] | None = None
-    x_train: Float64[ndarray, ' n p']  # original, not binned
+    """Test design matrix as used (after imputation and factor expansion)."""
+
+    x_train: Float64[ndarray, ' n p']
+    """Training design matrix as used (original scale, not binned)."""
+
     yhat_test: Float64[ndarray, 'ndpost m'] | None = None
+    """Test-point posterior function draws (latent scale for binary)."""
+
     yhat_test_lower: Float64[ndarray, ' m'] | None = None
+    """Lower `probs` quantile of `yhat_test` (default 2.5%, continuous only)."""
+
     yhat_test_mean: Float64[ndarray, ' m'] | None = None
+    """Posterior mean of `yhat_test`."""
+
     yhat_test_upper: Float64[ndarray, ' m'] | None = None
+    """Upper `probs` quantile of `yhat_test` (default 97.5%, continuous only)."""
+
     yhat_train: Float64[ndarray, 'ndpost n']
+    """Training-point posterior function draws (latent scale for binary)."""
+
     yhat_train_lower: Float64[ndarray, ' n'] | None = None
+    """Lower `probs` quantile of `yhat_train` (default 2.5%, continuous only)."""
+
     yhat_train_mean: Float64[ndarray, ' n'] | None = None
+    """Posterior mean of `yhat_train`."""
+
     yhat_train_upper: Float64[ndarray, ' n'] | None = None
+    """Upper `probs` quantile of `yhat_train` (default 97.5%, continuous only)."""
 
     def __init__(self, *args, **kw) -> None:
         super().__init__(*args, **kw)
@@ -173,4 +256,7 @@ class gbart(mc_gbart):  # noqa: D101 because the R doc is added automatically
     _rfuncname = 'BART3::gbart'
 
     accept: Float64[ndarray, ' nskip+ndpost']
+    """Per-iteration Metropolis-Hastings acceptance rate."""
+
     sigma: Float64[ndarray, ' nskip+ndpost'] | None = None
+    """Error-SD draws including burn-in (continuous only)."""
