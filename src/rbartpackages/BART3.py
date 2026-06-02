@@ -61,19 +61,25 @@ class ProcTime(NamedTuple):
 class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatically
     _rfuncname = 'BART3::mc.gbart'
 
-    accept: Float64[ndarray, 'nskip+ndpost/mc_cores mc_cores']
+    LPML: float | None = None  # log pseudo-marginal likelihood
+    accept: (
+        Float64[ndarray, ' nskip+ndpost']
+        | Float64[ndarray, 'nskip+ndpost/mc_cores mc_cores']
+    )
     chains: int
-    grp: Float64[ndarray, ' p']  # what's this?
+    grp: Float64[ndarray, ' p']  # column grouping for the sparse (DART) prior
     ndpost: int
     offset: float
     prob_test: None | Float64[ndarray, 'ndpost m'] = None
+    prob_test_lower: Float64[ndarray, ' m'] | None = None
     prob_test_mean: None | Float64[ndarray, ' m'] = None
+    prob_test_upper: Float64[ndarray, ' m'] | None = None
     prob_train: None | Float64[ndarray, 'ndpost n'] = None
     prob_train_mean: None | Float64[ndarray, ' n'] = None
     proc_time: ProcTime
-    rho: float  # what's this?
+    rho: float  # sparse (DART) prior concentration, defaults to sum(1/grp)
     rm_const: Int32[ndarray, '<=p']
-    sigest: bool | None = None  # not sure about this
+    sigest: float | None = None  # rough error SD for prior; nan from mc.gbart bug
     sigma: (
         Float64[ndarray, ' nskip+ndpost']
         | Float64[ndarray, 'nskip+ndpost/mc_cores mc_cores']
@@ -86,9 +92,12 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
     varcount_mean: Float64[ndarray, ' p']
     varprob: Float64[ndarray, 'ndpost p']
     varprob_mean: Float64[ndarray, ' p']
+    x_test: Float64[ndarray, ' m p'] | None = None
     x_train: Float64[ndarray, ' n p']  # original, not binned
     yhat_test: Float64[ndarray, 'ndpost m'] | None = None
+    yhat_test_lower: Float64[ndarray, ' m'] | None = None
     yhat_test_mean: Float64[ndarray, ' m'] | None = None
+    yhat_test_upper: Float64[ndarray, ' m'] | None = None
     yhat_train: Float64[ndarray, 'ndpost n']
     yhat_train_lower: Float64[ndarray, ' n'] | None = None
     yhat_train_mean: Float64[ndarray, ' n'] | None = None
@@ -115,8 +124,15 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
             msg = 'failed to parse rm.const because indices change sign'
             raise ValueError(msg)
 
+        if self.LPML is not None:
+            self.LPML = self.LPML.item()
         if self.sigest is not None:
-            self.sigest = self.sigest.item()
+            if self.sigest.dtype == bool:
+                # BART3 bug: mc.gbart with mc_cores > 1 overwrites sigest with
+                # its logical-NA default instead of the estimate.
+                self.sigest = float('nan')
+            else:
+                self.sigest = self.sigest.item()
         if self.sigma_mean is not None:
             self.sigma_mean = self.sigma_mean.item()
 
@@ -156,4 +172,5 @@ class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added aut
 class gbart(mc_gbart):  # noqa: D101 because the R doc is added automatically
     _rfuncname = 'BART3::gbart'
 
+    accept: Float64[ndarray, ' nskip+ndpost']
     sigma: Float64[ndarray, ' nskip+ndpost'] | None = None
