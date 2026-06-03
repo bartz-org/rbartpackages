@@ -32,6 +32,7 @@ from typing import NamedTuple, TypedDict
 import numpy as np
 from jaxtyping import AbstractDtype, Float64, Int32
 from numpy import ndarray
+from rpy2 import robjects
 
 from rbartpackages._base import RObjectBase, fork_safe_native_threads, rmethod
 
@@ -300,6 +301,41 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
 
 class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added automatically
     _rfuncname = 'BART3::bartModelMatrix'
+
+    X: Float64[ndarray, 'N p']
+    """Design matrix: vectors and data frames coerced to numeric, factors expanded to indicators."""
+
+    numcut: Int32[ndarray, ' p']
+    """Number of cutpoints chosen per column."""
+
+    rm_const: Int32[ndarray, ' p']
+    """1-based indices of the columns kept after removing constant ones."""
+
+    xinfo: Float64[ndarray, 'p numcut']
+    """Per-column cutpoint grid, NaN-padded to the maximum cut count."""
+
+    grp: Float64[ndarray, ' p'] | None
+    """Group size of each expanded factor's indicator columns, or None if no factors."""
+
+    def __new__(cls, *args, **kw) -> Float64[ndarray, 'N p'] | RObjectBase:
+        """Match R: return the bare matrix for ``numcut=0``, else a populated instance."""
+        # __init__ cannot change the return type, so the matrix-or-list choice
+        # is made here; returning a non-instance (the matrix) skips __init__.
+        self = super().__new__(cls)
+        self._robject = self._invoke_rfunc(args, kw)
+        if self._has_named_components(self._robject):
+            return self
+        return self._r2py(self._robject)
+
+    def __init__(self, *args, **kw) -> None:  # noqa: ARG002
+        # Only reached for the named-list case (numcut > 0); __new__ already
+        # invoked R and stored `_robject`, so just expose its components rather
+        # than calling super().__init__ (which would invoke R a second time).
+        self._set_attrs_from_robject()
+
+        # grp is R NULL unless the input had factor columns; expose it as None.
+        if self.grp is robjects.NULL:
+            self.grp = None
 
 
 class gbart(mc_gbart):  # noqa: D101 because the R doc is added automatically

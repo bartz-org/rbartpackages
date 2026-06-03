@@ -29,7 +29,7 @@ import math
 import numpy as np
 import pytest
 
-from tests.util import assert_close_matrices, import_or_skip
+from tests.util import assert_array_equal, assert_close_matrices, import_or_skip
 
 BART3 = import_or_skip('rbartpackages.BART3')
 
@@ -174,3 +174,27 @@ def test_mc_gbart_multicore(rng: np.random.Generator) -> None:
     # children run single-threaded, so this stays deadlock-free without a guard.
     yhat = bart.predict(x_train, **{'mc.cores': mc_cores})
     assert yhat.shape == (bart.ndpost, n)
+
+
+def test_bartModelMatrix_numcut0() -> None:
+    """With the default ``numcut=0`` R returns a bare matrix, so does the wrapper."""
+    x = np.array([[1.0, 5.0], [2.0, 6.0], [3.0, 7.0], [3.0, 8.0]])
+    out = BART3.bartModelMatrix(x)
+    assert isinstance(out, np.ndarray)
+    assert not isinstance(out, BART3.bartModelMatrix)
+    assert_close_matrices(out, x)
+
+
+def test_bartModelMatrix_numcut() -> None:
+    """With ``numcut > 0`` R returns the matrix plus the cutpoint metadata."""
+    x = np.array([[1.0, 5.0], [2.0, 6.0], [3.0, 7.0], [3.0, 8.0]])
+    numcut = 3
+    _, p = x.shape
+    bmm = BART3.bartModelMatrix(x, numcut=numcut)
+    assert isinstance(bmm, BART3.bartModelMatrix)
+    assert_close_matrices(bmm.X, x)
+    assert_array_equal(bmm.numcut, numcut, strict=False)
+    assert_array_equal(bmm.rm_const, np.arange(1, p + 1), strict=False)
+    assert bmm.xinfo.shape == (p, numcut)
+    # no factor columns, so no grouping of indicator columns
+    assert bmm.grp is None

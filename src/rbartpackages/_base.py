@@ -198,14 +198,34 @@ class RObjectBase:
             raise ValueError(msg)
         return m.group(1)
 
-    def __init__(self, *args: Any, **kw: Any) -> None:
+    @staticmethod
+    def _has_named_components(obj: object) -> bool:
+        """Whether `obj` exposes named components to set as attributes.
+
+        A names-less return (e.g. a bare matrix, as `bartModelMatrix` gives with
+        ``numcut=0``) still has ``.items()`` but yields ``None`` keys, so it is
+        excluded.
+        """
+        names = getattr(obj, 'names', None)
+        return (
+            hasattr(obj, 'items') and names is not None and names is not robjects.NULL
+        )
+
+    def _invoke_rfunc(self, args: Iterable[Any], kw: Mapping[str, Any]) -> object:
+        """Load the namespace and call `_rfuncname` on the converted arguments."""
         robjects.r(f'loadNamespace("{self._library}")')
         func = robjects.r(self._rfuncname)
-        obj = func(*self._args2r(args), **self._kw2r(kw))
-        self._robject = obj
-        if hasattr(obj, 'items'):
-            for s, v in obj.items():
+        return func(*self._args2r(args), **self._kw2r(kw))
+
+    def _set_attrs_from_robject(self) -> None:
+        """Set the named components of `self._robject` as Python attributes."""
+        if self._has_named_components(self._robject):
+            for s, v in self._robject.items():
                 setattr(self, s.replace('.', '_'), self._r2py(v))
+
+    def __init__(self, *args: Any, **kw: Any) -> None:
+        self._robject = self._invoke_rfunc(args, kw)
+        self._set_attrs_from_robject()
 
     def __init_subclass__(cls, **kw: Any) -> None:
         """Automatically add R documentation to subclasses."""
