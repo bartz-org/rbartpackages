@@ -159,3 +159,8 @@ def test_mc_gbart_multicore(rng: np.random.Generator) -> None:
     # mc.gbart overwrites sigest with its logical-NA default; __init__ -> nan.
     assert isinstance(bart.sigest, float)
     assert math.isnan(bart.sigest)
+
+    # predict with mc_cores > 1 forks via mc.pwbart; unlike mc.gbart's fork the
+    # children run single-threaded, so this stays deadlock-free without a guard.
+    yhat = bart.predict(x_train, **{'mc.cores': mc_cores})
+    assert yhat.shape == (bart.ndpost, n)
