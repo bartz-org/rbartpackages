@@ -202,13 +202,16 @@ class RObjectBase:
     def _has_named_components(obj: object) -> bool:
         """Whether `obj` exposes named components to set as attributes.
 
-        A names-less return (e.g. a bare matrix, as `bartModelMatrix` gives with
-        ``numcut=0``) still has ``.items()`` but yields ``None`` keys, so it is
-        excluded.
+        Only an R named list qualifies. A bare matrix (as `bartModelMatrix`
+        gives with ``numcut=0``) is excluded by the `ListVector` check: rpy2
+        reports a matrix's dimnames as ``names``, so the names check alone
+        would not cut it out.
         """
         names = getattr(obj, 'names', None)
         return (
-            hasattr(obj, 'items') and names is not None and names is not robjects.NULL
+            isinstance(obj, robjects.vectors.ListVector)
+            and names is not None
+            and names is not robjects.NULL
         )
 
     def _invoke_rfunc(self, args: Iterable[Any], kw: Mapping[str, Any]) -> object:

@@ -27,12 +27,13 @@
 # ruff: noqa: ANN002, ANN003
 
 from functools import partial
-from typing import NamedTuple, TypedDict
+from typing import NamedTuple, TypedDict, cast
 
 import numpy as np
 from jaxtyping import AbstractDtype, Float64, Int32
 from numpy import ndarray
 from rpy2 import robjects
+from rpy2.rlike.container import NamedList
 
 from rbartpackages._base import RObjectBase, fork_safe_native_threads, rmethod
 
@@ -234,13 +235,16 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
         self.rho = self.rho.item()
 
         if np.all(self.rm_const < 0):
-            _, p = self.varcount.shape
+            # R reports the dropped constant columns as negative indices into
+            # the original design matrix, while varcount has the kept ones
+            _, kept = self.varcount.shape
+            p = kept + self.rm_const.size
             rm_const = np.ones(p, bool)
             rm_const[-self.rm_const - 1] = False
             self.rm_const = np.arange(p, dtype=np.int32)[rm_const]
         elif np.all(self.rm_const > 0):
             self.rm_const -= 1
-        else:
+        else:  # pragma: no cover - R gives all-positive or all-negative indices
             msg = 'failed to parse rm.const because indices change sign'
             raise ValueError(msg)
 
@@ -256,26 +260,15 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
         if self.sigma_mean is not None:
             self.sigma_mean = self.sigma_mean.item()
 
-        if hasattr(self.treedraws, 'getbyname'):
-            # it's a NamedList
-            self.treedraws = {
-                'cutpoints': {
-                    i if it.name is None else it.name.item(): it.value
-                    for i, it in enumerate(
-                        self.treedraws.getbyname('cutpoints').items()
-                    )
-                },
-                'trees': self.treedraws.getbyname('trees').item(),
-            }
-        else:
-            # it's an OrdDict
-            self.treedraws = {
-                'cutpoints': {
-                    i if k is None else k.item(): v
-                    for i, (k, v) in enumerate(self.treedraws['cutpoints'].items())
-                },
-                'trees': self.treedraws['trees'].item(),
-            }
+        r_treedraws = cast(NamedList, self.treedraws)
+        cutpoints: NamedList = r_treedraws.getbyname('cutpoints')
+        self.treedraws = {
+            'cutpoints': {
+                i if it.name is None else it.name.item(): it.value
+                for i, it in enumerate(cutpoints.items())
+            },
+            'trees': r_treedraws.getbyname('trees').item(),
+        }
 
     @partial(rmethod, rname='predict')
     def _predict(self, newdata: Float64[ndarray, 'm p'], *args, **kwargs) -> object:
@@ -295,12 +288,9 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
         if not hasattr(out, 'items'):
             return out  # continuous: already a matrix
 
-        # binary: convert R's list (NamedList or OrdDict) to a dict of arrays
-        if hasattr(out, 'getbyname'):
-            items = [(it.name, it.value) for it in out.items()]
-        else:
-            items = list(out.items())
-        result = {str(k).replace('.', '_'): v for k, v in items}
+        # binary: convert R's list (a NamedList) to a dict of arrays
+        out = cast(NamedList, out)
+        result = {str(it.name).replace('.', '_'): it.value for it in out.items()}
         result['binaryOffset'] = result['binaryOffset'].item()
         return result
 

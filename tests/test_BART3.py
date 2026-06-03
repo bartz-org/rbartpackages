@@ -31,6 +31,7 @@ import pytest
 
 from tests.util import assert_array_equal, assert_close_matrices, import_or_skip
 
+pd = import_or_skip('pandas')
 BART3 = import_or_skip('rbartpackages.BART3')
 
 NDPOST = 20
@@ -51,17 +52,27 @@ def test_docstring() -> None:
 
 
 def test_gbart_no_test_data(rng: np.random.Generator) -> None:
-    """Without `x_test` the derived test-set attributes are left unset."""
+    """Without `x_test` the derived test-set attributes are left unset.
+
+    The fit also has a constant column (dropped, reported through `rm_const`)
+    and no burn-in (so `LPML` is not computed).
+    """
     x_train, y_train = make_data(rng)
-    n, _ = x_train.shape
+    n, p = x_train.shape
+    # R reports the dropped constant column as a negative rm.const index; the
+    # wrapper turns that into the kept 0-based column indices
+    x_train = np.insert(x_train, 1, 1.0, axis=1)
     bart = BART3.gbart(
-        x_train=x_train, y_train=y_train, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
+        x_train=x_train, y_train=y_train, ntree=NTREE, nskip=0, ndpost=NDPOST
     )
     assert bart.ndpost == NDPOST
     assert bart.yhat_train.shape == (NDPOST, n)
     assert bart.yhat_train_mean.shape == (n,)
+    assert bart.LPML is None  # only computed with burn-in
+    assert_array_equal(bart.rm_const, np.array([0, 2, 3], np.int32))
+    assert bart.varcount.shape == (NDPOST, p)
 
-    yhat = bart.predict(x_train)
+    yhat = bart.predict(x_train[:, bart.rm_const])
     assert yhat.shape == (NDPOST, n)
     assert_close_matrices(yhat.mean(axis=0), bart.yhat_train_mean, rtol=1e-5)
 
@@ -173,12 +184,24 @@ def test_mc_gbart_multicore(rng: np.random.Generator) -> None:
     assert yhat.shape == (bart.ndpost, n)
 
 
+@pytest.mark.parametrize('factor', [False, True], ids=['matrix', 'dataframe'])
 @pytest.mark.parametrize('numcut', [0, 3])
-def test_bartModelMatrix(numcut: int) -> None:
-    """``numcut=0`` returns a bare matrix; ``numcut>0`` adds cutpoint metadata."""
+def test_bartModelMatrix(numcut: int, factor: bool) -> None:
+    """``numcut=0`` returns a bare matrix; ``numcut>0`` adds cutpoint metadata.
+
+    A data-frame input gets its factor column expanded into one indicator
+    column per level, with the level counts reported in `grp`.
+    """
     x = np.array([[1.0, 5.0], [2.0, 6.0], [3.0, 7.0], [3.0, 8.0]])
+    if factor:
+        arg = pd.DataFrame(
+            {'a': x[:, 0], 'b': x[:, 1], 'c': pd.Categorical(['u', 'v', 'u', 'v'])}
+        )
+        x = np.c_[x, [1, 0, 1, 0], [0, 1, 0, 1]]
+    else:
+        arg = x
     _, p = x.shape
-    out = BART3.bartModelMatrix(x, numcut=numcut)
+    out = BART3.bartModelMatrix(arg, numcut=numcut)
     if numcut == 0:
         assert isinstance(out, np.ndarray)
         assert not isinstance(out, BART3.bartModelMatrix)
@@ -186,7 +209,12 @@ def test_bartModelMatrix(numcut: int) -> None:
     else:
         assert isinstance(out, BART3.bartModelMatrix)
         assert_close_matrices(out.X, x)
-        assert_array_equal(out.numcut, numcut, strict=False)
+        # binary indicators have a single midpoint cut, the rest get numcut
+        expected_numcut = [numcut, numcut, 1, 1] if factor else numcut
+        assert_array_equal(out.numcut, expected_numcut, strict=False)
         assert_array_equal(out.rm_const, np.arange(1, p + 1), strict=False)
         assert out.xinfo.shape == (p, numcut)
-        assert out.grp is None  # no factor columns, so no grouping of indicators
+        if factor:
+            assert_array_equal(out.grp, [1, 1, 2, 2], strict=False)
+        else:
+            assert out.grp is None  # no factor columns, no grouping of indicators
