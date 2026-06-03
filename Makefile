@@ -175,10 +175,7 @@ covcheck:
 	$(UV_RUN) coverage report --include='tests/**/test_*.py'
 	$(UV_RUN) coverage report --include='src/*'
 	$(UV_RUN) coverage report --include='tests/**/test_*.py' --fail-under=99 --format=total
-	# TODO: src coverage is gated at 80% for now because the standalone suite
-	# is still light (the comprehensive validation tests live in bartz). Bump
-	# back to 90% once the converter / error-path tests are backfilled.
-	$(UV_RUN) coverage report --include='src/*' --fail-under=80 --format=total
+	$(UV_RUN) coverage report --include='src/*' --fail-under=85 --format=total
 
 # Branch (changed-lines) coverage: fail if new/modified lines in src and tests
 # are not covered above the threshold. DIFF_BASE is the ref to diff against;
