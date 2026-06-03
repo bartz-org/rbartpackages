@@ -1,7 +1,7 @@
 <!--
 rbartpackages/docs/changelog.md
 
-Copyright (c) 2024-2026, The rbartpackages Contributors
+Copyright (c) 2026, The rbartpackages Contributors
 
 This file is part of rbartpackages.
 
@@ -31,7 +31,7 @@ SOFTWARE.
 # Changelog
 
 
-## 0.1.0 First release (2026-06-02)
+## Next release
 
 Initial standalone release. `rbartpackages` provides Python wrappers, built on `rpy2`, of the R BART packages `BART`, `BART3`, `bartMachine`, and `dbarts`. The code was previously developed inside the bartz repository.
 

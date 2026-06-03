@@ -32,7 +32,7 @@ import numpy as np
 from jaxtyping import AbstractDtype, Float64, Int32
 from numpy import ndarray
 
-from rbartpackages._base import RObjectBase, rmethod
+from rbartpackages._base import RObjectBase, fork_safe_native_threads, rmethod
 
 
 class TreeDraws(TypedDict):
@@ -187,7 +187,10 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
     """Upper `probs` quantile of `yhat_train` (default 97.5%, continuous only)."""
 
     def __init__(self, *args, **kw) -> None:
-        super().__init__(*args, **kw)
+        # mc.gbart forks via parallel::mcparallel; cap native thread pools at one
+        # thread across the fork to avoid a libgomp deadlock in the children.
+        with fork_safe_native_threads():
+            super().__init__(*args, **kw)
 
         # fix up attributes
         self.chains = self.chains.item()

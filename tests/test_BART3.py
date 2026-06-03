@@ -27,6 +27,7 @@
 import math
 
 import numpy as np
+import pytest
 
 from tests.util import assert_close_matrices, import_or_skip
 
@@ -113,15 +114,48 @@ def test_gbart_binary(rng: np.random.Generator) -> None:
 
 
 def test_sigest_is_float(rng: np.random.Generator) -> None:
-    """`sigest` is a finite float (the old annotation wrongly said bool).
-
-    The `mc.gbart` ``mc_cores > 1`` path returns `sigest` as a logical NA, which
-    `__init__` normalizes to nan; that path is not exercised here because
-    `mc.gbart` forks and deadlocks under rpy2's embedded R.
-    """
+    """`sigest` is a finite float for the serial `gbart` (continuous outcome)."""
     x_train, y_train = make_data(rng)
     bart = BART3.gbart(
         x_train=x_train, y_train=y_train, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
     )
     assert isinstance(bart.sigest, float)
     assert math.isfinite(bart.sigest)
+
+
+@pytest.mark.timeout(180)
+def test_mc_gbart_multicore(rng: np.random.Generator) -> None:
+    """`mc.gbart` with ``mc_cores > 1`` runs without deadlocking.
+
+    `mc.gbart` forks via `parallel::mcparallel`; GNU libgomp (reached through the
+    threaded OpenBLAS that R's LAPACK uses) is not fork-safe and hangs the forked
+    children. The wrapper caps native thread pools at one thread across the fork
+    to avoid it. Warming up a threaded OpenMP region first (a `predict` call) is
+    what makes the deadlock reliable, so this exercises the regression path.
+    """
+    x_train, y_train = make_data(rng)
+    n, _ = x_train.shape
+
+    # Arm the parent's libgomp thread pool, which is what poisons the fork.
+    warm = BART3.gbart(
+        x_train=x_train, y_train=y_train, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
+    )
+    warm.predict(x_train)
+
+    mc_cores = 2
+    bart = BART3.mc_gbart(
+        x_train=x_train,
+        y_train=y_train,
+        ntree=NTREE,
+        nskip=NSKIP,
+        ndpost=NDPOST,
+        mc_cores=mc_cores,
+    )
+    assert bart.chains == mc_cores
+    # ndpost is rounded up to a whole number of draws per chain.
+    assert bart.ndpost == mc_cores * math.ceil(NDPOST / mc_cores)
+    assert bart.yhat_train.shape == (bart.ndpost, n)
+    assert bart.yhat_train_mean.shape == (n,)
+    # mc.gbart overwrites sigest with its logical-NA default; __init__ -> nan.
+    assert isinstance(bart.sigest, float)
+    assert math.isnan(bart.sigest)
