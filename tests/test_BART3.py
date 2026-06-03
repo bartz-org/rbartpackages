@@ -112,6 +112,16 @@ def test_gbart_binary(rng: np.random.Generator) -> None:
     assert bart.sigest is None  # not estimated for binary outcomes
     assert isinstance(bart.LPML, float)
 
+    # R's predict for binary fits returns a list; the wrapper exposes it as a
+    # dict of arrays (continuous fits return a bare matrix instead).
+    pred = bart.predict(x_test)
+    assert isinstance(pred, dict)
+    assert pred['yhat_test'].shape == (NDPOST, m)
+    assert pred['prob_test'].shape == (NDPOST, m)
+    assert pred['prob_test_mean'].shape == (m,)
+    assert np.all(pred['prob_test_lower'] <= pred['prob_test_upper'])
+    assert isinstance(pred['binaryOffset'], float)
+
 
 def test_sigest_is_float(rng: np.random.Generator) -> None:
     """`sigest` is a finite float for the serial `gbart` (continuous outcome)."""

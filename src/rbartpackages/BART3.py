@@ -26,6 +26,7 @@
 
 # ruff: noqa: ANN002, ANN003
 
+from functools import partial
 from typing import NamedTuple, TypedDict
 
 import numpy as np
@@ -43,6 +44,28 @@ class TreeDraws(TypedDict):
 
     trees: str
     """Posterior tree ensemble serialized in BART's text format (read by `predict`)."""
+
+
+class PredictBinary(TypedDict):
+    """Type of `predict`'s return value for binary (`pbart`/`lbart`) fits."""
+
+    yhat_test: Float64[ndarray, 'ndpost m']
+    """Posterior latent-function draws at the test points."""
+
+    prob_test: Float64[ndarray, 'ndpost m']
+    """Success-probability draws (probit/logit transform of `yhat_test`)."""
+
+    prob_test_mean: Float64[ndarray, ' m']
+    """Posterior mean of `prob_test`."""
+
+    prob_test_lower: Float64[ndarray, ' m']
+    """Lower `probs` quantile of `prob_test` (default 2.5%)."""
+
+    prob_test_upper: Float64[ndarray, ' m']
+    """Upper `probs` quantile of `prob_test` (default 97.5%)."""
+
+    binaryOffset: float
+    """Data centering value on the latent scale."""
 
 
 class String(AbstractDtype):
@@ -77,10 +100,14 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
     """Log pseudo-marginal likelihood; ``None`` without burn-in. Unstable for BART."""
 
     accept: (
-        Float64[ndarray, ' nskip+ndpost']
-        | Float64[ndarray, 'nskip+ndpost/mc_cores mc_cores']
+        Float64[ndarray, ' nskip+ndpost*keepevery']
+        | Float64[ndarray, 'nskip+ndpost*keepevery/mc_cores mc_cores']
     )
-    """Per-iteration Metropolis-Hastings acceptance rate (per chain for `mc.gbart`)."""
+    """Per-iteration Metropolis-Hastings acceptance rate (per chain for `mc.gbart`).
+
+    Recorded for every MCMC iteration, including the thinned-away ones (unlike
+    `sigma`, which keeps only burn-in plus retained draws).
+    """
 
     chains: int
     """Number of MCMC chains, i.e. the `mc_cores` actually used."""
@@ -243,12 +270,32 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
                 'trees': self.treedraws['trees'].item(),
             }
 
-    @rmethod
+    @partial(rmethod, rname='predict')
+    def _predict(self, newdata: Float64[ndarray, 'm p'], *args, **kwargs) -> object:
+        """Call R's `predict`; returns a matrix (continuous) or a list (binary)."""
+        ...
+
     def predict(
         self, newdata: Float64[ndarray, 'm p'], *args, **kwargs
-    ) -> Float64[ndarray, 'ndpost m']:
-        """Compute predictions."""
-        ...
+    ) -> Float64[ndarray, 'ndpost m'] | PredictBinary:
+        """Compute predictions.
+
+        For continuous (`wbart`) fits this is the matrix of posterior
+        latent-function draws. For binary (`pbart`/`lbart`) fits R returns a
+        list, exposed here as a `PredictBinary` dict.
+        """
+        out = self._predict(newdata, *args, **kwargs)
+        if not hasattr(out, 'items'):
+            return out  # continuous: already a matrix
+
+        # binary: convert R's list (NamedList or OrdDict) to a dict of arrays
+        if hasattr(out, 'getbyname'):
+            items = [(it.name, it.value) for it in out.items()]
+        else:
+            items = list(out.items())
+        result = {str(k).replace('.', '_'): v for k, v in items}
+        result['binaryOffset'] = result['binaryOffset'].item()
+        return result
 
 
 class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added automatically
@@ -258,8 +305,8 @@ class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added aut
 class gbart(mc_gbart):  # noqa: D101 because the R doc is added automatically
     _rfuncname = 'BART3::gbart'
 
-    accept: Float64[ndarray, ' nskip+ndpost']
-    """Per-iteration Metropolis-Hastings acceptance rate."""
+    accept: Float64[ndarray, ' nskip+ndpost*keepevery']
+    """Per-iteration Metropolis-Hastings acceptance rate (every MCMC iteration)."""
 
     sigma: Float64[ndarray, ' nskip+ndpost'] | None = None
     """Error-SD draws including burn-in (continuous only)."""
