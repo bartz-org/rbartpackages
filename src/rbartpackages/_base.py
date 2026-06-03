@@ -22,7 +22,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from collections.abc import Callable, Iterable, Mapping
+import ctypes
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from functools import wraps
 from re import fullmatch, match
 from typing import Any
@@ -99,6 +101,48 @@ DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
 
 R_IDENTIFIER = r'(?:[a-zA-Z]|\.(?![0-9]))[a-zA-Z0-9._]*'
 
+# In-process native thread pools to cap before R forks. R's
+# `parallel::mcparallel` (used by the `mc.*` BART functions) forks, but GNU
+# libgomp is not fork-safe: a forked child that enters an OpenMP parallel region
+# hangs forever on a barrier because the worker threads do not survive the fork.
+# The threaded OpenBLAS that R's LAPACK calls (e.g. `summary(lm(...))` for the
+# `sigest` default) dispatches through libgomp, so a child deadlocks there.
+# Running these pools single-threaded across the fork stops the thread team from
+# being started at all, sidestepping the deadlock. Each entry is a (getter,
+# setter) pair of C symbols; missing ones (e.g. a single-threaded reference BLAS)
+# are skipped.
+NATIVE_THREAD_POOLS = (
+    ('omp_get_max_threads', 'omp_set_num_threads'),
+    ('openblas_get_num_threads', 'openblas_set_num_threads'),
+)
+
+
+@contextmanager
+def fork_safe_native_threads() -> Iterator[None]:
+    """Cap OpenMP/OpenBLAS thread pools at one thread for the duration.
+
+    Workaround for the deadlock that hangs the children forked by R's
+    ``parallel::mcparallel`` when GNU libgomp has a live thread pool (see
+    `NATIVE_THREAD_POOLS`). The previous thread counts are restored on exit.
+    """
+    handle = ctypes.CDLL(None)
+    saved = []
+    for getter_name, setter_name in NATIVE_THREAD_POOLS:
+        try:
+            getter = getattr(handle, getter_name)
+            setter = getattr(handle, setter_name)
+        except AttributeError:
+            continue
+        getter.restype = ctypes.c_int
+        setter.argtypes = (ctypes.c_int,)
+        saved.append((setter, getter()))
+        setter(1)
+    try:
+        yield
+    finally:
+        for setter, nthreads in saved:
+            setter(nthreads)
+
 
 class RObjectBase:
     """
@@ -154,14 +198,37 @@ class RObjectBase:
             raise ValueError(msg)
         return m.group(1)
 
-    def __init__(self, *args: Any, **kw: Any) -> None:
+    @staticmethod
+    def _has_named_components(obj: object) -> bool:
+        """Whether `obj` exposes named components to set as attributes.
+
+        Only an R named list qualifies. A bare matrix (as `bartModelMatrix`
+        gives with ``numcut=0``) is excluded by the `ListVector` check: rpy2
+        reports a matrix's dimnames as ``names``, so the names check alone
+        would not cut it out.
+        """
+        names = getattr(obj, 'names', None)
+        return (
+            isinstance(obj, robjects.vectors.ListVector)
+            and names is not None
+            and names is not robjects.NULL
+        )
+
+    def _invoke_rfunc(self, args: Iterable[Any], kw: Mapping[str, Any]) -> object:
+        """Load the namespace and call `_rfuncname` on the converted arguments."""
         robjects.r(f'loadNamespace("{self._library}")')
         func = robjects.r(self._rfuncname)
-        obj = func(*self._args2r(args), **self._kw2r(kw))
-        self._robject = obj
-        if hasattr(obj, 'items'):
-            for s, v in obj.items():
+        return func(*self._args2r(args), **self._kw2r(kw))
+
+    def _set_attrs_from_robject(self) -> None:
+        """Set the named components of `self._robject` as Python attributes."""
+        if self._has_named_components(self._robject):
+            for s, v in self._robject.items():
                 setattr(self, s.replace('.', '_'), self._r2py(v))
+
+    def __init__(self, *args: Any, **kw: Any) -> None:
+        self._robject = self._invoke_rfunc(args, kw)
+        self._set_attrs_from_robject()
 
     def __init_subclass__(cls, **kw: Any) -> None:
         """Automatically add R documentation to subclasses."""
