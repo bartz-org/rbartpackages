@@ -75,7 +75,7 @@ The R dependencies are pinned in `renv.lock` (regenerate via renv, do not hand-e
 - pytest, with parametrization and subtests
 - global `rng` fixture provides a deterministic per-test `numpy.random.Generator` (use it directly)
     - to seed R, do `from tests.util import int_seed; int_seed(rng)`
-- tests that need an R package which may be missing should use `tests.util.import_or_skip` so they skip (rather than error) when the package, R, or Java is unavailable
+- tests that need an R package which may be missing should use `tests.util.import_or_skip` so they skip (rather than error) when the package (or some heavy dep like Java) is unavailable
 - to compare vectors/matrices/tensors, use `tests.util.assert_close_matrices` (and `assert_different_matrices`) instead of numpy's `assert_allclose`
     - use `rtol`, add `atol` only when comparing values near zero
 - prefer the `assert_*` helpers from `tests.util` and `numpy.testing` to plain `assert` where appropriate
