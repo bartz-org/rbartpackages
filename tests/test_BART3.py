@@ -50,8 +50,8 @@ def test_docstring() -> None:
     assert 'R documentation' in BART3.gbart.__doc__
 
 
-def test_gbart_fit(rng: np.random.Generator) -> None:
-    """Fit `gbart` and check the output shapes and predictions."""
+def test_gbart_no_test_data(rng: np.random.Generator) -> None:
+    """Without `x_test` the derived test-set attributes are left unset."""
     x_train, y_train = make_data(rng)
     n, _ = x_train.shape
     bart = BART3.gbart(
@@ -65,78 +65,69 @@ def test_gbart_fit(rng: np.random.Generator) -> None:
     assert yhat.shape == (NDPOST, n)
     assert_close_matrices(yhat.mean(axis=0), bart.yhat_train_mean, rtol=1e-5)
 
-    # Without test data, R's cgbart still returns yhat.test (empty), while the
-    # derived test attributes are left unset; the wrapper mirrors both.
+    # R's cgbart still returns yhat.test (empty), while the derived test
+    # attributes are left unset; the wrapper mirrors both.
     assert bart.yhat_test.shape == (NDPOST, 0)
     assert bart.x_test is None
     assert bart.yhat_test_mean is None
 
 
-def test_gbart_test_data(rng: np.random.Generator) -> None:
-    """Passing `x_test` populates the test-set output attributes."""
+@pytest.mark.parametrize('binary', [False, True], ids=['continuous', 'binary'])
+def test_gbart_test_data(rng: np.random.Generator, binary: bool) -> None:
+    """Passing `x_test` populates the test-set outputs.
+
+    The continuous (`wbart`) and binary (`pbart`) paths expose different
+    attributes and `predict` return types.
+    """
     x_train, y_train = make_data(rng)
-    x_test = rng.standard_normal((7, x_train.shape[1]))
+    n, p = x_train.shape
+    x_test = rng.standard_normal((7, p))
     m, _ = x_test.shape
+    if binary:
+        y_train = (y_train > np.median(y_train)).astype(float)
     bart = BART3.gbart(
         x_train=x_train,
         y_train=y_train,
         x_test=x_test,
+        type='pbart' if binary else 'wbart',
         ntree=NTREE,
         nskip=NSKIP,
         ndpost=NDPOST,
     )
-    assert bart.x_test.shape == x_test.shape
+    assert bart.ndpost == NDPOST
+    assert bart.yhat_train.shape == (NDPOST, n)
     assert bart.yhat_test.shape == (NDPOST, m)
-    assert bart.yhat_test_mean.shape == (m,)
-    assert bart.yhat_test_lower.shape == (m,)
-    assert bart.yhat_test_upper.shape == (m,)
-    assert np.all(bart.yhat_test_lower <= bart.yhat_test_upper)
+    assert bart.x_test.shape == x_test.shape
     assert isinstance(bart.LPML, float)
 
+    if binary:
+        assert bart.prob_train.shape == (NDPOST, n)
+        assert bart.prob_test.shape == (NDPOST, m)
+        assert bart.prob_test_lower.shape == (m,)
+        assert bart.prob_test_upper.shape == (m,)
+        assert np.all(bart.prob_test_lower <= bart.prob_test_upper)
+        assert bart.sigest is None  # not estimated for binary outcomes
 
-def test_gbart_binary(rng: np.random.Generator) -> None:
-    """The probit (`type='pbart'`) path exposes the probability attributes."""
-    x_train, y_train = make_data(rng)
-    n, _ = x_train.shape
-    y_bin = (y_train > np.median(y_train)).astype(float)
-    x_test = rng.standard_normal((7, x_train.shape[1]))
-    m, _ = x_test.shape
-    bart = BART3.gbart(
-        x_train=x_train,
-        y_train=y_bin,
-        x_test=x_test,
-        type='pbart',
-        ntree=NTREE,
-        nskip=NSKIP,
-        ndpost=NDPOST,
-    )
-    assert bart.prob_train.shape == (NDPOST, n)
-    assert bart.prob_test.shape == (NDPOST, m)
-    assert bart.prob_test_lower.shape == (m,)
-    assert bart.prob_test_upper.shape == (m,)
-    assert np.all(bart.prob_test_lower <= bart.prob_test_upper)
-    assert bart.sigest is None  # not estimated for binary outcomes
-    assert isinstance(bart.LPML, float)
+        # R's predict for binary fits returns a list; the wrapper exposes it as
+        # a dict of arrays (continuous fits return a bare matrix instead).
+        pred = bart.predict(x_test)
+        assert isinstance(pred, dict)
+        assert pred['yhat_test'].shape == (NDPOST, m)
+        assert pred['prob_test'].shape == (NDPOST, m)
+        assert pred['prob_test_mean'].shape == (m,)
+        assert np.all(pred['prob_test_lower'] <= pred['prob_test_upper'])
+        assert isinstance(pred['binaryOffset'], float)
+    else:
+        assert bart.yhat_test_mean.shape == (m,)
+        assert bart.yhat_test_lower.shape == (m,)
+        assert bart.yhat_test_upper.shape == (m,)
+        assert np.all(bart.yhat_test_lower <= bart.yhat_test_upper)
+        assert isinstance(bart.sigest, float)
+        assert math.isfinite(bart.sigest)
 
-    # R's predict for binary fits returns a list; the wrapper exposes it as a
-    # dict of arrays (continuous fits return a bare matrix instead).
-    pred = bart.predict(x_test)
-    assert isinstance(pred, dict)
-    assert pred['yhat_test'].shape == (NDPOST, m)
-    assert pred['prob_test'].shape == (NDPOST, m)
-    assert pred['prob_test_mean'].shape == (m,)
-    assert np.all(pred['prob_test_lower'] <= pred['prob_test_upper'])
-    assert isinstance(pred['binaryOffset'], float)
-
-
-def test_sigest_is_float(rng: np.random.Generator) -> None:
-    """`sigest` is a finite float for the serial `gbart` (continuous outcome)."""
-    x_train, y_train = make_data(rng)
-    bart = BART3.gbart(
-        x_train=x_train, y_train=y_train, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
-    )
-    assert isinstance(bart.sigest, float)
-    assert math.isfinite(bart.sigest)
+        pred = bart.predict(x_test)
+        assert pred.shape == (NDPOST, m)
+        assert_close_matrices(pred.mean(axis=0), bart.yhat_test_mean, rtol=1e-5)
 
 
 @pytest.mark.timeout(180)
@@ -182,25 +173,20 @@ def test_mc_gbart_multicore(rng: np.random.Generator) -> None:
     assert yhat.shape == (bart.ndpost, n)
 
 
-def test_bartModelMatrix_numcut0() -> None:
-    """With the default ``numcut=0`` R returns a bare matrix, so does the wrapper."""
+@pytest.mark.parametrize('numcut', [0, 3])
+def test_bartModelMatrix(numcut: int) -> None:
+    """``numcut=0`` returns a bare matrix; ``numcut>0`` adds cutpoint metadata."""
     x = np.array([[1.0, 5.0], [2.0, 6.0], [3.0, 7.0], [3.0, 8.0]])
-    out = BART3.bartModelMatrix(x)
-    assert isinstance(out, np.ndarray)
-    assert not isinstance(out, BART3.bartModelMatrix)
-    assert_close_matrices(out, x)
-
-
-def test_bartModelMatrix_numcut() -> None:
-    """With ``numcut > 0`` R returns the matrix plus the cutpoint metadata."""
-    x = np.array([[1.0, 5.0], [2.0, 6.0], [3.0, 7.0], [3.0, 8.0]])
-    numcut = 3
     _, p = x.shape
-    bmm = BART3.bartModelMatrix(x, numcut=numcut)
-    assert isinstance(bmm, BART3.bartModelMatrix)
-    assert_close_matrices(bmm.X, x)
-    assert_array_equal(bmm.numcut, numcut, strict=False)
-    assert_array_equal(bmm.rm_const, np.arange(1, p + 1), strict=False)
-    assert bmm.xinfo.shape == (p, numcut)
-    # no factor columns, so no grouping of indicator columns
-    assert bmm.grp is None
+    out = BART3.bartModelMatrix(x, numcut=numcut)
+    if numcut == 0:
+        assert isinstance(out, np.ndarray)
+        assert not isinstance(out, BART3.bartModelMatrix)
+        assert_close_matrices(out, x)
+    else:
+        assert isinstance(out, BART3.bartModelMatrix)
+        assert_close_matrices(out.X, x)
+        assert_array_equal(out.numcut, numcut, strict=False)
+        assert_array_equal(out.rm_const, np.arange(1, p + 1), strict=False)
+        assert out.xinfo.shape == (p, numcut)
+        assert out.grp is None  # no factor columns, so no grouping of indicators
