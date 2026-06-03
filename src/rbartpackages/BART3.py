@@ -190,8 +190,14 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
     x_train: Float64[ndarray, ' n p']
     """Training design matrix as used (original scale, not binned)."""
 
-    yhat_test: Float64[ndarray, 'ndpost m'] | None = None
-    """Test-point posterior function draws (latent scale for binary)."""
+    yhat_test: Float64[ndarray, 'ndpost m']
+    """Test-point posterior function draws (latent scale for binary).
+
+    Always present: R's `cgbart` allocates it unconditionally, so without test
+    data it is an empty ``(ndpost, 0)`` array rather than ``None`` (unlike the
+    derived `yhat_test_mean`/`lower`/`upper`, which R only fills when test data
+    is given).
+    """
 
     yhat_test_lower: Float64[ndarray, ' m'] | None = None
     """Lower `probs` quantile of `yhat_test` (default 2.5%, continuous only)."""

@@ -65,6 +65,12 @@ def test_gbart_fit(rng: np.random.Generator) -> None:
     assert yhat.shape == (NDPOST, n)
     assert_close_matrices(yhat.mean(axis=0), bart.yhat_train_mean, rtol=1e-5)
 
+    # Without test data, R's cgbart still returns yhat.test (empty), while the
+    # derived test attributes are left unset; the wrapper mirrors both.
+    assert bart.yhat_test.shape == (NDPOST, 0)
+    assert bart.x_test is None
+    assert bart.yhat_test_mean is None
+
 
 def test_gbart_test_data(rng: np.random.Generator) -> None:
     """Passing `x_test` populates the test-set output attributes."""
