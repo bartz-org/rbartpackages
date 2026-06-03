@@ -29,9 +29,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.util import import_or_skip
-
-_base = import_or_skip('rbartpackages._base')
+from rbartpackages import _base
 
 
 def test_fork_safe_native_threads(monkeypatch: pytest.MonkeyPatch) -> None:
