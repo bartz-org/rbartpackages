@@ -53,26 +53,41 @@ def test_docstring() -> None:
 def test_gbart_no_test_data(rng: np.random.Generator) -> None:
     """Without `x_test` the derived test-set attributes are left unset.
 
-    The fit also has a constant column (dropped, reported through `rm_const`).
+    The fit also has a constant column (dropped, reported through `rm_const`),
+    no burn-in (`LPML` is computed anyway, unlike BART3), and thinning
+    (`sigma` keeps the thinned-away draws too, unlike BART3).
     """
     x_train, y_train = make_data(rng)
     n, p = x_train.shape
     # R reports the dropped constant column as a negative rm.const index; the
     # wrapper turns that into the kept 0-based column indices
     x_train = np.insert(x_train, 1, 1.0, axis=1)
+    keepevery = 2
     bart = BART.gbart(
-        x_train=x_train, y_train=y_train, ntree=NTREE, nskip=0, ndpost=NDPOST
+        x_train=x_train,
+        y_train=y_train,
+        ntree=NTREE,
+        nskip=0,
+        ndpost=NDPOST,
+        keepevery=keepevery,
     )
     assert bart.ndpost == NDPOST
     assert bart.yhat_train.shape == (NDPOST, n)
     assert bart.yhat_train_mean.shape == (n,)
+    assert isinstance(bart.LPML, float)
     assert_array_equal(bart.rm_const, np.array([0, 2, 3], np.int32))
     assert bart.varcount.shape == (NDPOST, p)
+    assert bart.sigma.shape == (NDPOST * keepevery,)  # one draw per iteration
+    assert isinstance(bart.sigma_mean, float)
+    assert_array_equal(bart.hostname, np.array([False]))
 
     yhat = bart.predict(x_train[:, bart.rm_const])
     assert yhat.shape == (NDPOST, n)
     assert_close_matrices(yhat.mean(axis=0), bart.yhat_train_mean, rtol=1e-5)
 
+    # R's cgbart still returns yhat.test (empty), while the derived test
+    # attributes are left unset; the wrapper mirrors both.
+    assert bart.yhat_test.shape == (NDPOST, 0)
     assert bart.yhat_test_mean is None
 
 
@@ -97,16 +112,24 @@ def test_gbart_test_data(rng: np.random.Generator, binary: bool) -> None:
         ntree=NTREE,
         nskip=NSKIP,
         ndpost=NDPOST,
+        hostname=True,
     )
     assert bart.ndpost == NDPOST
     assert bart.yhat_train.shape == (NDPOST, n)
     assert bart.yhat_test.shape == (NDPOST, m)
+    assert isinstance(bart.LPML, float)
+    assert bart.hostname.shape == (1,)
+    assert bart.hostname.dtype.kind == 'U'  # the fitting machine's hostname
 
     if binary:
         assert bart.prob_train.shape == (NDPOST, n)
         assert bart.prob_train_mean.shape == (n,)
         assert bart.prob_test.shape == (NDPOST, m)
         assert bart.prob_test_mean.shape == (m,)
+        assert bart.sigma is None
+        assert bart.sigma_mean is None
+        assert bart.yhat_train_mean is None  # R sets prob.train.mean instead
+        assert bart.yhat_test_mean is None
 
         # R's predict for binary fits returns a list; the wrapper exposes it as
         # a dict of arrays (continuous fits return a bare matrix instead).
@@ -122,6 +145,8 @@ def test_gbart_test_data(rng: np.random.Generator, binary: bool) -> None:
     else:
         assert bart.yhat_train_mean.shape == (n,)
         assert bart.yhat_test_mean.shape == (m,)
+        assert bart.sigma.shape == (NSKIP + NDPOST,)
+        assert isinstance(bart.sigma_mean, float)
         assert bart.prob_train is None
         assert bart.prob_test is None
 
@@ -161,8 +186,59 @@ def test_mc_gbart_multicore(rng: np.random.Generator) -> None:
     # ndpost is rounded up to a whole number of draws per chain.
     assert bart.ndpost == mc_cores * math.ceil(NDPOST / mc_cores)
     assert bart.yhat_train.shape == (bart.ndpost, n)
+    assert bart.yhat_train_mean.shape == (n,)
+    assert isinstance(bart.LPML, float)
+    assert bart.sigma.shape == (NSKIP + bart.ndpost // mc_cores, mc_cores)
+    assert_array_equal(bart.hostname, np.array([False, False]))
+    # without test data R does not even combine the chains' empty yhat.test
+    assert bart.yhat_test.shape == (bart.ndpost // mc_cores, 0)
 
     # predict with mc_cores > 1 forks via mc.pwbart; unlike mc.gbart's fork the
     # children run single-threaded, so this stays deadlock-free without a guard.
     yhat = bart.predict(x_train, **{'mc.cores': mc_cores})
     assert yhat.shape == (bart.ndpost, n)
+
+
+@pytest.mark.timeout(180)
+def test_mc_gbart_binary(rng: np.random.Generator) -> None:
+    """`mc.gbart` with binary outcomes leaves some outputs uncombined.
+
+    R combines `yhat_*` across the chains but forgets `prob_*`, which keep the
+    first chain's draws only. The fit also has a constant column: R drops it
+    (negative `rm_const`, fixed up by the wrapper) but then miscounts the kept
+    columns and fails to update the serialized-ensemble header, so `predict`
+    returns the first chain's draws only.
+    """
+    x_train, y_train = make_data(rng)
+    n, p = x_train.shape
+    y_train = (y_train > np.median(y_train)).astype(float)
+    x_test = rng.standard_normal((7, p))
+    m, _ = x_test.shape
+    x_train = np.insert(x_train, 1, 1.0, axis=1)
+    x_test = np.insert(x_test, 1, 1.0, axis=1)
+
+    mc_cores = 2
+    bart = BART.mc_gbart(
+        x_train=x_train,
+        y_train=y_train,
+        x_test=x_test,
+        type='pbart',
+        ntree=NTREE,
+        nskip=NSKIP,
+        ndpost=NDPOST,
+        mc_cores=mc_cores,
+    )
+    chain_ndpost = bart.ndpost // mc_cores
+    assert bart.ndpost == mc_cores * math.ceil(NDPOST / mc_cores)
+    assert_array_equal(bart.rm_const, np.array([0, 2, 3], np.int32))
+    assert bart.yhat_train.shape == (bart.ndpost, n)
+    assert bart.yhat_test.shape == (bart.ndpost, m)
+    assert bart.prob_train.shape == (chain_ndpost, n)
+    assert bart.prob_test.shape == (chain_ndpost, m)
+    assert bart.prob_train_mean.shape == (n,)
+    assert bart.prob_test_mean.shape == (m,)
+    assert bart.sigma is None
+    assert bart.yhat_test_mean is None  # R sets prob.test.mean instead
+
+    pred = bart.predict(x_test[:, bart.rm_const])
+    assert pred['yhat_test'].shape == (chain_ndpost, m)  # broken trees header

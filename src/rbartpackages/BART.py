@@ -41,16 +41,26 @@ class TreeDraws(TypedDict):
     """Type of the `treedraws` attribute of `mc_gbart`."""
 
     cutpoints: dict[int | str, Float64[ndarray, ' numcut[i]']]
+    """Per-variable grid of candidate split points, keyed by column index or name."""
+
     trees: str
+    """Posterior tree ensemble serialized in BART's text format (read by `predict`)."""
 
 
 class PredictBinary(TypedDict):
     """Type of `predict`'s return value for binary (`pbart`/`lbart`) fits."""
 
     yhat_test: Float64[ndarray, 'ndpost m']
+    """Posterior latent-function draws at the test points."""
+
     prob_test: Float64[ndarray, 'ndpost m']
+    """Success-probability draws (probit/logit transform of `yhat_test`)."""
+
     prob_test_mean: Float64[ndarray, ' m']
+    """Posterior mean of `prob_test`."""
+
     binaryOffset: float
+    """Data centering value on the latent scale."""
 
 
 class String(AbstractDtype):
@@ -63,41 +73,117 @@ class ProcTime(NamedTuple):
     """Python representation of the output of R's `proc.time`."""
 
     user_self: float
+    """CPU seconds charged to the R process in user mode."""
+
     sys_self: float
+    """CPU seconds charged to the R process in system (kernel) mode."""
+
     elapsed: float
+    """Wall-clock seconds elapsed."""
+
     user_child: float
+    """User-mode CPU seconds of forked child processes (`mc.gbart` workers)."""
+
     sys_child: float
+    """System-mode CPU seconds of forked child processes."""
 
 
-class mc_gbart(RObjectBase):
-    """Using the `x_test` argument may create problems, try not passing it."""
-
+class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatically
     _rfuncname = 'BART::mc.gbart'
 
+    LPML: float
+    """Log pseudo-marginal likelihood; unstable for BART.
+
+    Always computed, even without burn-in. Miscomputed by R for binary
+    `mc.gbart` fits with ``mc_cores > 1`` (the chains' probabilities are not
+    combined before the computation).
+    """
+
     hostname: Bool[ndarray, ' mc_cores'] | String[ndarray, ' mc_cores']
+    """Per-chain hostname if fitted with ``hostname=True``, else per-chain ``False``."""
+
     ndpost: int
+    """Number of posterior draws kept, after burn-in and thinning."""
+
     offset: float
+    """Data centering value for the response (link scale for binary)."""
+
     prob_test: None | Float64[ndarray, 'ndpost/mc_cores m'] = None
+    """Test-point success-probability draws (binary outcomes only).
+
+    `mc.gbart` with ``mc_cores > 1`` forgets to combine the chains, leaving
+    only the first chain's draws.
+    """
+
     prob_test_mean: None | Float64[ndarray, ' m'] = None
+    """Posterior mean of `prob_test`."""
+
     prob_train: None | Float64[ndarray, 'ndpost/mc_cores n'] = None
+    """Training-point success-probability draws (binary outcomes only).
+
+    `mc.gbart` with ``mc_cores > 1`` forgets to combine the chains, leaving
+    only the first chain's draws.
+    """
+
     prob_train_mean: None | Float64[ndarray, ' n'] = None
+    """Posterior mean of `prob_train`."""
+
     proc_time: ProcTime
+    """Timing of the fit, from R's `proc.time`."""
+
     rm_const: Int32[ndarray, '<=p']
+    """0-based indices of the `x_train` columns kept (constant columns dropped).
+
+    `mc.gbart` with ``mc_cores=1`` relabels the kept columns to ``0 .. kept-1``,
+    losing which original columns were dropped.
+    """
+
     sigma: (
-        Float64[ndarray, ' nskip+ndpost']
-        | Float64[ndarray, 'nskip+ndpost/mc_cores mc_cores']
+        Float64[ndarray, ' nskip+ndpost*keepevery']
+        | Float64[ndarray, 'nskip+ndpost*keepevery/mc_cores mc_cores']
         | None
     ) = None
+    """Error-SD draws, continuous outcomes only (per chain for `mc.gbart`).
+
+    One draw per MCMC iteration: burn-in and the thinned-away iterations are
+    included.
+    """
+
     sigma_mean: float | None = None
+    """Mean of the post-burn-in `sigma` draws (continuous only)."""
+
     treedraws: TreeDraws
+    """Sampled trees: per-variable cutpoint grid and the serialized ensemble."""
+
     varcount: Int32[ndarray, 'ndpost p']
+    """Per-draw count of splits on each variable, summed over trees."""
+
     varcount_mean: Float64[ndarray, ' p']
+    """Posterior mean of `varcount` per variable."""
+
     varprob: Float64[ndarray, 'ndpost p']
+    """Per-draw probability assigned to each variable for splitting."""
+
     varprob_mean: Float64[ndarray, ' p']
-    yhat_test: Float64[ndarray, 'ndpost m'] | None = None
+    """Posterior mean of `varprob` per variable."""
+
+    yhat_test: Float64[ndarray, 'ndpost m']
+    """Test-point posterior function draws (latent scale for binary).
+
+    Always present: R's `cgbart` allocates it unconditionally, so without test
+    data it is an empty array rather than ``None`` (with the rows of the first
+    chain only for `mc.gbart`, which combines the chains just when there is
+    test data).
+    """
+
     yhat_test_mean: Float64[ndarray, ' m'] | None = None
+    """Posterior mean of `yhat_test` (continuous with test data only)."""
+
     yhat_train: Float64[ndarray, 'ndpost n']
+    """Training-point posterior function draws (latent scale for binary)."""
+
     yhat_train_mean: Float64[ndarray, ' n'] | None = None
+    """Posterior mean of `yhat_train` (continuous only)."""
 
     def __init__(self, *args, **kw) -> None:
         # mc.gbart forks via parallel::mcparallel; cap native thread pools at one
@@ -106,6 +192,7 @@ class mc_gbart(RObjectBase):
             super().__init__(*args, **kw)
 
         # fix up attributes
+        self.LPML = self.LPML.item()
         self.ndpost = self.ndpost.astype(int).item()
         self.offset = self.offset.item()
         self.proc_time = ProcTime(*map(float, self.proc_time))
@@ -150,6 +237,11 @@ class mc_gbart(RObjectBase):
         For continuous (`wbart`) fits this is the matrix of posterior
         latent-function draws. For binary (`pbart`/`lbart`) fits R returns a
         list, exposed here as a `PredictBinary` dict.
+
+        For `mc.gbart` fits with ``mc_cores > 1`` that dropped constant
+        columns, R miscounts the kept columns and fails to update the header
+        of the serialized ensemble, so only the first chain's draws are
+        returned.
         """
         out = self._predict(newdata, *args, **kwargs)
         if not hasattr(out, 'items'):
@@ -169,4 +261,14 @@ class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added aut
 class gbart(mc_gbart):  # noqa: D101 because the R doc is added automatically
     _rfuncname = 'BART::gbart'
 
-    sigma: Float64[ndarray, ' nskip+ndpost'] | None = None
+    hostname: Bool[ndarray, ' 1'] | String[ndarray, ' 1']
+    """Hostname the fit ran on if fitted with ``hostname=True``, else ``False``."""
+
+    prob_test: None | Float64[ndarray, 'ndpost m'] = None
+    """Test-point success-probability draws (binary outcomes only)."""
+
+    prob_train: None | Float64[ndarray, 'ndpost n'] = None
+    """Training-point success-probability draws (binary outcomes only)."""
+
+    sigma: Float64[ndarray, ' nskip+ndpost*keepevery'] | None = None
+    """Error-SD draws for every MCMC iteration, burn-in included (continuous only)."""
