@@ -304,8 +304,13 @@ class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added aut
     numcut: Int32[ndarray, ' p']
     """Number of cutpoints chosen per column."""
 
-    rm_const: Int32[ndarray, ' p']
-    """1-based indices of the columns kept after removing constant ones."""
+    rm_const: Int32[ndarray, '<=p']
+    """0-based indices of the non-constant columns of the expanded design.
+
+    The indices refer to the columns of `X` before removal: ``rm.const=True``
+    removes the constant columns from `X`, `numcut` and `xinfo`, while the
+    default only detects them.
+    """
 
     xinfo: Float64[ndarray, 'p numcut']
     """Per-column cutpoint grid, NaN-padded to the maximum cut count."""
@@ -323,7 +328,7 @@ class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added aut
             return self
         return self._r2py(self._robject)
 
-    def __init__(self, *args, **kw) -> None:  # noqa: ARG002
+    def __init__(self, *args, **kw) -> None:
         # Only reached for the named-list case (numcut > 0); __new__ already
         # invoked R and stored `_robject`, so just expose its components rather
         # than calling super().__init__ (which would invoke R a second time).
@@ -332,6 +337,24 @@ class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added aut
         # grp is R NULL unless the input had factor columns; expose it as None.
         if self.grp is robjects.NULL:
             self.grp = None
+
+        if np.all(self.rm_const < 0):
+            # R flags detected-constant columns as negative indices into the
+            # pre-removal design matrix; whether they were also removed from X
+            # depends on the rm.const argument, so recover it from the call
+            removed = kw.get(
+                'rm.const', kw.get('rm_const', args[4] if len(args) > 4 else False)
+            )
+            _, n_cols = self.X.shape
+            p = n_cols + self.rm_const.size if removed else n_cols
+            rm_const = np.ones(p, bool)
+            rm_const[-self.rm_const - 1] = False
+            self.rm_const = np.arange(p, dtype=np.int32)[rm_const]
+        elif np.all(self.rm_const > 0):
+            self.rm_const -= 1
+        else:  # pragma: no cover - R gives all-positive or all-negative indices
+            msg = 'failed to parse rm.const because indices change sign'
+            raise ValueError(msg)
 
 
 class gbart(mc_gbart):  # noqa: D101 because the R doc is added automatically

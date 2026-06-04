@@ -274,10 +274,25 @@ def test_bartModelMatrix(numcut: int, factor: bool) -> None:
         # binary indicators have a single midpoint cut, the rest get numcut
         expected_numcut = [numcut, numcut, 1, 1] if factor else numcut
         assert_array_equal(out.numcut, expected_numcut, strict=False)
-        assert_array_equal(out.rm_const, np.arange(1, p + 1), strict=False)
+        assert_array_equal(out.rm_const, np.arange(p, dtype=np.int32))
         assert out.xinfo.shape == (p, numcut)
         if factor:
             # 1-based index of the input column each output column comes from
             assert_array_equal(out.grp, [1, 2, 3, 3], strict=False)
         else:
             assert out.grp is None  # grp is only built for data-frame input
+
+
+@pytest.mark.parametrize('removed', [False, True], ids=['detect', 'remove'])
+def test_bartModelMatrix_constant(removed: bool) -> None:
+    """A detected-constant column becomes a gap in the 0-based `rm_const`.
+
+    R reports it as a negative 1-based index whether or not it is removed from
+    `X` (the ``rm.const`` flag); the wrapper resolves both cases to the indices
+    of the non-constant pre-removal columns.
+    """
+    x = np.array([[1.0, 1.0, 5.0], [2.0, 1.0, 6.0], [3.0, 1.0, 7.0]])
+    n, p = x.shape
+    out = BART.bartModelMatrix(x, numcut=3, rm_const=removed)
+    assert_array_equal(out.rm_const, np.array([0, 2], np.int32))
+    assert out.X.shape == (n, p - 1 if removed else p)
