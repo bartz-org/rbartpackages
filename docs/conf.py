@@ -32,6 +32,7 @@ import datetime
 import pathlib
 import re
 import sys
+from contextlib import chdir
 from enum import Enum
 from functools import cached_property
 from inspect import getsourcefile, getsourcelines, isclass, unwrap
@@ -59,6 +60,14 @@ if version is None:
     version = f'{COMMIT[:7]}{"+" if UNCOMMITTED_STUFF else ""}'
 
 import rbartpackages
+
+# rpy2 boots the embedded R on first import, and R sources `.Rprofile` (the
+# renv activation) only from its startup cwd, so trigger the boot with the cwd
+# pinned to the repository root: autodoc imports the wrapper modules later,
+# from whatever directory sphinx-build was invoked in (`make docs` uses
+# `docs/`), and without renv the R packages are missing or unpinned.
+with chdir(REPO.working_tree_dir):
+    import rbartpackages._base
 
 # -- Project information -----------------------------------------------------
 
@@ -238,7 +247,11 @@ def linkcode_resolve(domain: str, info: dict[str, str]) -> str | None:
         obj = type(obj)
     obj = unwrap(obj)
 
-    fn = getsourcefile(obj)
+    try:
+        fn = getsourcefile(obj)
+    except TypeError:
+        # C-implemented object, e.g. tuple methods inherited by a NamedTuple
+        return None
     assert fn
 
     source, lineno = getsourcelines(obj)

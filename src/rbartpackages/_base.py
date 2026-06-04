@@ -27,6 +27,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from functools import wraps
 from re import fullmatch, match
+from textwrap import indent
 from typing import Any
 
 import numpy as np
@@ -236,7 +237,9 @@ class RObjectBase:
         page = Package(library).fetch(name)
         if cls.__doc__ is None:
             cls.__doc__ = ''
-        cls.__doc__ += 'R documentation:\n' + page.to_docstring()
+        # the R help text is plain text, not valid RST: append it as a literal
+        # block so docutils renders it verbatim instead of misparsing it
+        cls.__doc__ += '\nR documentation::\n\n' + indent(page.to_docstring(), '    ')
 
 
 def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
