@@ -31,6 +31,7 @@ import pytest
 
 from tests.util import assert_array_equal, assert_close_matrices, import_or_skip
 
+pd = import_or_skip('pandas')
 BART = import_or_skip('rbartpackages.BART')
 
 NDPOST = 20
@@ -242,3 +243,41 @@ def test_mc_gbart_binary(rng: np.random.Generator) -> None:
 
     pred = bart.predict(x_test[:, bart.rm_const])
     assert pred['yhat_test'].shape == (chain_ndpost, m)  # broken trees header
+
+
+@pytest.mark.parametrize('factor', [False, True], ids=['matrix', 'dataframe'])
+@pytest.mark.parametrize('numcut', [0, 3])
+def test_bartModelMatrix(numcut: int, factor: bool) -> None:
+    """``numcut=0`` returns a bare matrix; ``numcut>0`` adds cutpoint metadata.
+
+    A data-frame input gets its factor column expanded into one indicator
+    column per level; `grp` maps each output column to its input column
+    (unlike BART3, which stores the group sizes).
+    """
+    x = np.array([[1.0, 5.0], [2.0, 6.0], [3.0, 7.0], [3.0, 8.0]])
+    if factor:
+        arg = pd.DataFrame(
+            {'a': x[:, 0], 'b': x[:, 1], 'c': pd.Categorical(['u', 'v', 'u', 'v'])}
+        )
+        x = np.c_[x, [1, 0, 1, 0], [0, 1, 0, 1]]
+    else:
+        arg = x
+    _, p = x.shape
+    out = BART.bartModelMatrix(arg, numcut=numcut)
+    if numcut == 0:
+        assert isinstance(out, np.ndarray)
+        assert not isinstance(out, BART.bartModelMatrix)
+        assert_close_matrices(out, x)
+    else:
+        assert isinstance(out, BART.bartModelMatrix)
+        assert_close_matrices(out.X, x)
+        # binary indicators have a single midpoint cut, the rest get numcut
+        expected_numcut = [numcut, numcut, 1, 1] if factor else numcut
+        assert_array_equal(out.numcut, expected_numcut, strict=False)
+        assert_array_equal(out.rm_const, np.arange(1, p + 1), strict=False)
+        assert out.xinfo.shape == (p, numcut)
+        if factor:
+            # 1-based index of the input column each output column comes from
+            assert_array_equal(out.grp, [1, 2, 3, 3], strict=False)
+        else:
+            assert out.grp is None  # grp is only built for data-frame input
