@@ -55,7 +55,7 @@ class PredictBinary(TypedDict):
     """Posterior latent-function draws at the test points."""
 
     prob_test: Float64[ndarray, 'ndpost m']
-    """Success-probability draws (probit/logit transform of `yhat_test`)."""
+    """Success-probability draws (inverse probit/logit transform of `yhat_test`)."""
 
     prob_test_mean: Float64[ndarray, ' m']
     """Posterior mean of `prob_test`."""
@@ -342,6 +342,7 @@ class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added aut
             # R flags detected-constant columns as negative indices into the
             # pre-removal design matrix; whether they were also removed from X
             # depends on the rm.const argument, so recover it from the call
+            # (rm.const is the 5th parameter of R's bartModelMatrix)
             removed = kw.get(
                 'rm.const', kw.get('rm_const', args[4] if len(args) > 4 else False)
             )
