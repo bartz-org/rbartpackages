@@ -29,7 +29,7 @@ import math
 import numpy as np
 import pytest
 
-from tests.util import import_or_skip
+from tests.util import assert_array_equal, assert_close_matrices, import_or_skip
 
 BART = import_or_skip('rbartpackages.BART')
 
@@ -50,19 +50,30 @@ def test_docstring() -> None:
     assert 'R documentation' in BART.gbart.__doc__
 
 
-def test_gbart_fit(rng: np.random.Generator) -> None:
-    """Fit `gbart` and check the output shapes and predictions."""
+def test_gbart_no_test_data(rng: np.random.Generator) -> None:
+    """Without `x_test` the derived test-set attributes are left unset.
+
+    The fit also has a constant column (dropped, reported through `rm_const`).
+    """
     x_train, y_train = make_data(rng)
-    n, _ = x_train.shape
+    n, p = x_train.shape
+    # R reports the dropped constant column as a negative rm.const index; the
+    # wrapper turns that into the kept 0-based column indices
+    x_train = np.insert(x_train, 1, 1.0, axis=1)
     bart = BART.gbart(
-        x_train=x_train, y_train=y_train, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
+        x_train=x_train, y_train=y_train, ntree=NTREE, nskip=0, ndpost=NDPOST
     )
     assert bart.ndpost == NDPOST
     assert bart.yhat_train.shape == (NDPOST, n)
+    assert bart.yhat_train_mean.shape == (n,)
+    assert_array_equal(bart.rm_const, np.array([0, 2, 3], np.int32))
+    assert bart.varcount.shape == (NDPOST, p)
 
-    yhat = bart.predict(x_train)
-    assert yhat.shape[0] == NDPOST
-    assert yhat.shape[-1] == n
+    yhat = bart.predict(x_train[:, bart.rm_const])
+    assert yhat.shape == (NDPOST, n)
+    assert_close_matrices(yhat.mean(axis=0), bart.yhat_train_mean, rtol=1e-5)
+
+    assert bart.yhat_test_mean is None
 
 
 @pytest.mark.timeout(180)

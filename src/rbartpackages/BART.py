@@ -101,13 +101,16 @@ class mc_gbart(RObjectBase):
         self.proc_time = ProcTime(*map(float, self.proc_time))
 
         if np.all(self.rm_const < 0):
-            _, p = self.varcount.shape
+            # R reports the dropped constant columns as negative indices into
+            # the original design matrix, while varcount has the kept ones
+            _, kept = self.varcount.shape
+            p = kept + self.rm_const.size
             rm_const = np.ones(p, bool)
             rm_const[-self.rm_const - 1] = False
             self.rm_const = np.arange(p, dtype=np.int32)[rm_const]
         elif np.all(self.rm_const > 0):
             self.rm_const -= 1
-        else:
+        else:  # pragma: no cover - R gives all-positive or all-negative indices
             msg = 'failed to parse rm.const because indices change sign'
             raise ValueError(msg)
 
