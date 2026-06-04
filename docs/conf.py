@@ -35,7 +35,7 @@ import sys
 from enum import Enum
 from functools import cached_property
 from inspect import getsourcefile, getsourcelines, isclass, unwrap
-from os import getenv
+from os import chdir, getenv
 
 import git
 
@@ -59,6 +59,18 @@ if version is None:
     version = f'{COMMIT[:7]}{"+" if UNCOMMITTED_STUFF else ""}'
 
 import rbartpackages
+
+# rpy2 boots the embedded R on first import, and R sources `.Rprofile` (the
+# renv activation) only from its startup cwd, so trigger the boot with the cwd
+# pinned to the repository root: autodoc imports the wrapper modules later,
+# from whatever directory sphinx-build was invoked in (`make docs` uses
+# `docs/`), and without renv the R packages are missing or unpinned.
+CWD = pathlib.Path.cwd()
+chdir(REPO.working_tree_dir)
+try:
+    import rbartpackages._base
+finally:
+    chdir(CWD)
 
 # -- Project information -----------------------------------------------------
 
