@@ -250,7 +250,11 @@ def linkcode_resolve(domain: str, info: dict[str, str]) -> str | None:
         obj = type(obj)
     obj = unwrap(obj)
 
-    fn = getsourcefile(obj)
+    try:
+        fn = getsourcefile(obj)
+    except TypeError:
+        # C-implemented object, e.g. tuple methods inherited by a NamedTuple
+        return None
     assert fn
 
     source, lineno = getsourcelines(obj)
