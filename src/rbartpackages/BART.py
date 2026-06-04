@@ -26,6 +26,7 @@
 
 # ruff: noqa: ANN002, ANN003
 
+from functools import partial
 from typing import NamedTuple, TypedDict, cast
 
 import numpy as np
@@ -41,6 +42,15 @@ class TreeDraws(TypedDict):
 
     cutpoints: dict[int | str, Float64[ndarray, ' numcut[i]']]
     trees: str
+
+
+class PredictBinary(TypedDict):
+    """Type of `predict`'s return value for binary (`pbart`/`lbart`) fits."""
+
+    yhat_test: Float64[ndarray, 'ndpost m']
+    prob_test: Float64[ndarray, 'ndpost m']
+    prob_test_mean: Float64[ndarray, ' m']
+    binaryOffset: float
 
 
 class String(AbstractDtype):
@@ -127,12 +137,29 @@ class mc_gbart(RObjectBase):
             'trees': r_treedraws.getbyname('trees').item(),
         }
 
-    @rmethod
+    @partial(rmethod, rname='predict')
+    def _predict(self, newdata: Float64[ndarray, 'm p'], *args, **kwargs) -> object:
+        """Call R's `predict`; returns a matrix (continuous) or a list (binary)."""
+        ...
+
     def predict(
         self, newdata: Float64[ndarray, 'm p'], *args, **kwargs
-    ) -> Float64[ndarray, 'ndpost/mc_cores m']:
-        """Compute predictions."""
-        ...
+    ) -> Float64[ndarray, 'ndpost m'] | PredictBinary:
+        """Compute predictions.
+
+        For continuous (`wbart`) fits this is the matrix of posterior
+        latent-function draws. For binary (`pbart`/`lbart`) fits R returns a
+        list, exposed here as a `PredictBinary` dict.
+        """
+        out = self._predict(newdata, *args, **kwargs)
+        if not hasattr(out, 'items'):
+            return out  # continuous: already a matrix
+
+        # binary: convert R's list (a NamedList) to a dict of arrays
+        out = cast(NamedList, out)
+        result = {str(it.name).replace('.', '_'): it.value for it in out.items()}
+        result['binaryOffset'] = result['binaryOffset'].item()
+        return result
 
 
 class bartModelMatrix(RObjectBase):  # noqa: D101 because the R doc is added automatically

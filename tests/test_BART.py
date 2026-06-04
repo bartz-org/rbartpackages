@@ -76,6 +76,60 @@ def test_gbart_no_test_data(rng: np.random.Generator) -> None:
     assert bart.yhat_test_mean is None
 
 
+@pytest.mark.parametrize('binary', [False, True], ids=['continuous', 'binary'])
+def test_gbart_test_data(rng: np.random.Generator, binary: bool) -> None:
+    """Passing `x_test` populates the test-set outputs.
+
+    The continuous (`wbart`) and binary (`pbart`) paths expose different
+    attributes and `predict` return types.
+    """
+    x_train, y_train = make_data(rng)
+    n, p = x_train.shape
+    x_test = rng.standard_normal((7, p))
+    m, _ = x_test.shape
+    if binary:
+        y_train = (y_train > np.median(y_train)).astype(float)
+    bart = BART.gbart(
+        x_train=x_train,
+        y_train=y_train,
+        x_test=x_test,
+        type='pbart' if binary else 'wbart',
+        ntree=NTREE,
+        nskip=NSKIP,
+        ndpost=NDPOST,
+    )
+    assert bart.ndpost == NDPOST
+    assert bart.yhat_train.shape == (NDPOST, n)
+    assert bart.yhat_test.shape == (NDPOST, m)
+
+    if binary:
+        assert bart.prob_train.shape == (NDPOST, n)
+        assert bart.prob_train_mean.shape == (n,)
+        assert bart.prob_test.shape == (NDPOST, m)
+        assert bart.prob_test_mean.shape == (m,)
+
+        # R's predict for binary fits returns a list; the wrapper exposes it as
+        # a dict of arrays (continuous fits return a bare matrix instead).
+        # Unlike BART3, there are no prob.test.lower/upper quantiles.
+        pred = bart.predict(x_test)
+        assert isinstance(pred, dict)
+        expected_keys = ['binaryOffset', 'prob_test', 'prob_test_mean', 'yhat_test']
+        assert sorted(pred) == expected_keys
+        assert pred['yhat_test'].shape == (NDPOST, m)
+        assert pred['prob_test'].shape == (NDPOST, m)
+        assert pred['prob_test_mean'].shape == (m,)
+        assert isinstance(pred['binaryOffset'], float)
+    else:
+        assert bart.yhat_train_mean.shape == (n,)
+        assert bart.yhat_test_mean.shape == (m,)
+        assert bart.prob_train is None
+        assert bart.prob_test is None
+
+        pred = bart.predict(x_test)
+        assert pred.shape == (NDPOST, m)
+        assert_close_matrices(pred.mean(axis=0), bart.yhat_test_mean, rtol=1e-5)
+
+
 @pytest.mark.timeout(180)
 def test_mc_gbart_multicore(rng: np.random.Generator) -> None:
     """`mc.gbart` with ``mc_cores > 1`` runs without deadlocking.
@@ -107,3 +161,8 @@ def test_mc_gbart_multicore(rng: np.random.Generator) -> None:
     # ndpost is rounded up to a whole number of draws per chain.
     assert bart.ndpost == mc_cores * math.ceil(NDPOST / mc_cores)
     assert bart.yhat_train.shape == (bart.ndpost, n)
+
+    # predict with mc_cores > 1 forks via mc.pwbart; unlike mc.gbart's fork the
+    # children run single-threaded, so this stays deadlock-free without a guard.
+    yhat = bart.predict(x_train, **{'mc.cores': mc_cores})
+    assert yhat.shape == (bart.ndpost, n)
