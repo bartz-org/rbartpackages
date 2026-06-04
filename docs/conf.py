@@ -32,10 +32,11 @@ import datetime
 import pathlib
 import re
 import sys
+from contextlib import chdir
 from enum import Enum
 from functools import cached_property
 from inspect import getsourcefile, getsourcelines, isclass, unwrap
-from os import chdir, getenv
+from os import getenv
 
 import git
 
@@ -65,12 +66,8 @@ import rbartpackages
 # pinned to the repository root: autodoc imports the wrapper modules later,
 # from whatever directory sphinx-build was invoked in (`make docs` uses
 # `docs/`), and without renv the R packages are missing or unpinned.
-CWD = pathlib.Path.cwd()
-chdir(REPO.working_tree_dir)
-try:
+with chdir(REPO.working_tree_dir):
     import rbartpackages._base
-finally:
-    chdir(CWD)
 
 # -- Project information -----------------------------------------------------
 
