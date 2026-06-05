@@ -32,11 +32,14 @@ the module directly.
 """
 
 import math
+from dataclasses import dataclass
 from types import ModuleType
 
 import numpy as np
 import pandas as pd
 import pytest
+from jaxtyping import Float64
+from numpy import ndarray
 
 from tests.util import assert_array_equal, assert_close_matrices, import_or_skip
 
@@ -56,11 +59,24 @@ def is_BART3(pkg: ModuleType) -> bool:
     return pkg.__name__ == 'rbartpackages.BART3'
 
 
-def make_data(rng: np.random.Generator, n: int = 30, p: int = 3) -> tuple:
+@dataclass(frozen=True)
+class Data:
+    """A small regression dataset."""
+
+    x: Float64[ndarray, 'n p']
+    """Predictors."""
+
+    y: Float64[ndarray, ' n']
+    """Outcomes, the first predictor plus noise."""
+
+
+@pytest.fixture
+def data(rng: np.random.Generator) -> Data:
     """Generate a small regression dataset."""
-    x_train = rng.standard_normal((n, p))
-    y_train = x_train[:, 0] + 0.1 * rng.standard_normal(n)
-    return x_train, y_train
+    n, p = 30, 3
+    x = rng.standard_normal((n, p))
+    y = x[:, 0] + 0.1 * rng.standard_normal(n)
+    return Data(x, y)
 
 
 def test_docstring(pkg: ModuleType) -> None:
@@ -68,22 +84,21 @@ def test_docstring(pkg: ModuleType) -> None:
     assert 'R documentation' in pkg.gbart.__doc__
 
 
-def test_gbart_no_test_data(rng: np.random.Generator, pkg: ModuleType) -> None:
+def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
     """Without `x_test` the derived test-set attributes are left unset.
 
     The fit also has a constant column (dropped, reported through `rm_const`),
     no burn-in (BART computes `LPML` anyway, BART3 does not), and thinning
     (BART's `sigma` keeps the thinned-away draws too, BART3's drops them).
     """
-    x_train, y_train = make_data(rng)
-    n, p = x_train.shape
+    n, p = data.x.shape
     # R reports the dropped constant column as a negative rm.const index; the
     # wrapper turns that into the kept 0-based column indices
-    x_train = np.insert(x_train, 1, 1.0, axis=1)
+    x_train = np.insert(data.x, 1, 1.0, axis=1)
     keepevery = 2
     bart = pkg.gbart(
         x_train=x_train,
-        y_train=y_train,
+        y_train=data.y,
         ntree=NTREE,
         nskip=0,
         ndpost=NDPOST,
@@ -115,18 +130,19 @@ def test_gbart_no_test_data(rng: np.random.Generator, pkg: ModuleType) -> None:
 
 
 def fit_gbart_test_data(
-    rng: np.random.Generator, pkg: ModuleType, binary: bool
+    rng: np.random.Generator, pkg: ModuleType, data: Data, binary: bool
 ) -> tuple:
     """Fit `gbart` with test data and check the outputs common to both paths."""
-    x_train, y_train = make_data(rng)
-    n, p = x_train.shape
+    n, p = data.x.shape
     x_test = rng.standard_normal((7, p))
     m, _ = x_test.shape
     if binary:
-        y_train = (y_train > np.median(y_train)).astype(float)
+        y_train = (data.y > np.median(data.y)).astype(float)
+    else:
+        y_train = data.y
     kw = dict() if is_BART3(pkg) else dict(hostname=True)  # BART3 dropped hostname
     bart = pkg.gbart(
-        x_train=x_train,
+        x_train=data.x,
         y_train=y_train,
         x_test=x_test,
         type='pbart' if binary else 'wbart',
@@ -147,13 +163,15 @@ def fit_gbart_test_data(
     return bart, x_test, n, m
 
 
-def test_gbart_test_data_continuous(rng: np.random.Generator, pkg: ModuleType) -> None:
+def test_gbart_test_data_continuous(
+    rng: np.random.Generator, pkg: ModuleType, data: Data
+) -> None:
     """Passing `x_test` populates the test-set outputs of a `wbart` fit.
 
     `predict` returns the bare draws matrix; BART3 additionally exposes
     posterior quantiles and the prior's `sigest`.
     """
-    bart, x_test, n, m = fit_gbart_test_data(rng, pkg, binary=False)
+    bart, x_test, n, m = fit_gbart_test_data(rng, pkg, data, binary=False)
     assert bart.yhat_train_mean.shape == (n,)
     assert bart.yhat_test_mean.shape == (m,)
     assert bart.sigma.shape == (NSKIP + NDPOST,)
@@ -172,13 +190,15 @@ def test_gbart_test_data_continuous(rng: np.random.Generator, pkg: ModuleType) -
     assert_close_matrices(pred.mean(axis=0), bart.yhat_test_mean, rtol=1e-5)
 
 
-def test_gbart_test_data_binary(rng: np.random.Generator, pkg: ModuleType) -> None:
+def test_gbart_test_data_binary(
+    rng: np.random.Generator, pkg: ModuleType, data: Data
+) -> None:
     """Passing `x_test` populates the test-set outputs of a `pbart` fit.
 
     The probability-scale `prob_*` outputs replace the derived `yhat_*_mean`
     ones; BART3 additionally exposes posterior quantiles.
     """
-    bart, x_test, n, m = fit_gbart_test_data(rng, pkg, binary=True)
+    bart, x_test, n, m = fit_gbart_test_data(rng, pkg, data, binary=True)
     assert bart.prob_train.shape == (NDPOST, n)
     assert bart.prob_train_mean.shape == (n,)
     assert bart.prob_test.shape == (NDPOST, m)
@@ -210,7 +230,7 @@ def test_gbart_test_data_binary(rng: np.random.Generator, pkg: ModuleType) -> No
 
 
 @pytest.mark.timeout(180)
-def test_mc_gbart_multicore(rng: np.random.Generator, pkg: ModuleType) -> None:
+def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
     """`mc.gbart` with ``mc_cores > 1`` runs without deadlocking.
 
     `mc.gbart` forks via `parallel::mcparallel`; GNU libgomp (reached through the
@@ -219,19 +239,18 @@ def test_mc_gbart_multicore(rng: np.random.Generator, pkg: ModuleType) -> None:
     to avoid it. Warming up a threaded OpenMP region first (a `predict` call) is
     what makes the deadlock reliable, so this exercises the regression path.
     """
-    x_train, y_train = make_data(rng)
-    n, _ = x_train.shape
+    n, _ = data.x.shape
 
     # Arm the parent's libgomp thread pool, which is what poisons the fork.
     warm = pkg.gbart(
-        x_train=x_train, y_train=y_train, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
+        x_train=data.x, y_train=data.y, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
     )
-    warm.predict(x_train)
+    warm.predict(data.x)
 
     mc_cores = 2
     bart = pkg.mc_gbart(
-        x_train=x_train,
-        y_train=y_train,
+        x_train=data.x,
+        y_train=data.y,
         ntree=NTREE,
         nskip=NSKIP,
         ndpost=NDPOST,
@@ -255,12 +274,12 @@ def test_mc_gbart_multicore(rng: np.random.Generator, pkg: ModuleType) -> None:
 
     # predict with mc_cores > 1 forks via mc.pwbart; unlike mc.gbart's fork the
     # children run single-threaded, so this stays deadlock-free without a guard.
-    yhat = bart.predict(x_train, **{'mc.cores': mc_cores})
+    yhat = bart.predict(data.x, **{'mc.cores': mc_cores})
     assert yhat.shape == (bart.ndpost, n)
 
 
 @pytest.mark.timeout(180)
-def test_mc_gbart_binary(rng: np.random.Generator) -> None:
+def test_mc_gbart_binary(rng: np.random.Generator, data: Data) -> None:
     """`mc.gbart` with binary outcomes leaves some outputs uncombined.
 
     R combines `yhat_*` across the chains but forgets `prob_*`, which keep the
@@ -271,12 +290,11 @@ def test_mc_gbart_binary(rng: np.random.Generator) -> None:
     test is not shared with BART3.
     """
     BART = import_or_skip('rbartpackages.BART')
-    x_train, y_train = make_data(rng)
-    n, p = x_train.shape
-    y_train = (y_train > np.median(y_train)).astype(float)
+    n, p = data.x.shape
+    y_train = (data.y > np.median(data.y)).astype(float)
     x_test = rng.standard_normal((7, p))
     m, _ = x_test.shape
-    x_train = np.insert(x_train, 1, 1.0, axis=1)
+    x_train = np.insert(data.x, 1, 1.0, axis=1)
     x_test = np.insert(x_test, 1, 1.0, axis=1)
 
     mc_cores = 2
