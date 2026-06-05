@@ -291,3 +291,45 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
         return self._r2py(out)
 
     return impl
+
+
+def rfunction(func: Callable, *, rname: str | None = None) -> Callable:
+    """Automatically implement a function using the corresponding R function.
+
+    Use it for R functions that take an object as first argument without
+    being methods of its class.
+
+    Parameters
+    ----------
+    func
+        A function whose first parameter is an `RObjectBase` instance.
+    rname
+        The name of the function in R, looked up in the package of the
+        `RObjectBase` argument. If not specified, use the name of `func`.
+
+    Returns
+    -------
+    funcimpl
+        An implementation that calls the R function on the wrapped R object
+        and the converted remaining arguments. The original implementation of
+        `func` is completely discarded.
+
+    Examples
+    --------
+    >>> @partial(rfunction, rname='my.function')
+    ... def my_function(obj: MyRObject, arg1: int, arg2: str):
+    ...     ...
+    """
+    if rname is None:
+        rname = func.__name__
+
+    @wraps(func)
+    def impl(obj: RObjectBase, *args: Any, **kw: Any) -> object:
+        if not fullmatch(R_IDENTIFIER, rname):
+            msg = f'Invalid R function name: {rname}'
+            raise ValueError(msg)
+        rfunc = robjects.r(f'{obj._library}::{rname}')  # noqa: SLF001, base-class access
+        out = rfunc(obj._robject, *obj._args2r(args), **obj._kw2r(kw))  # noqa: SLF001, base-class access
+        return obj._r2py(out)  # noqa: SLF001, base-class access
+
+    return impl
