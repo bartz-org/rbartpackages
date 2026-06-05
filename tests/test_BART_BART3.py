@@ -69,6 +69,11 @@ class Data:
     y: Float64[ndarray, ' n']
     """Outcomes, the first predictor plus noise."""
 
+    @property
+    def biny(self) -> Float64[ndarray, ' n']:
+        """Outcomes binarized at their median, for binary-outcome fits."""
+        return (self.y > np.median(self.y)).astype(float)
+
 
 @pytest.fixture
 def data(rng: np.random.Generator) -> Data:
@@ -136,14 +141,10 @@ def fit_gbart_test_data(
     n, p = data.x.shape
     x_test = rng.standard_normal((7, p))
     m, _ = x_test.shape
-    if binary:
-        y_train = (data.y > np.median(data.y)).astype(float)
-    else:
-        y_train = data.y
     kw = dict() if is_BART3(pkg) else dict(hostname=True)  # BART3 dropped hostname
     bart = pkg.gbart(
         x_train=data.x,
-        y_train=y_train,
+        y_train=data.biny if binary else data.y,
         x_test=x_test,
         type='pbart' if binary else 'wbart',
         ntree=NTREE,
@@ -291,7 +292,6 @@ def test_mc_gbart_binary(rng: np.random.Generator, data: Data) -> None:
     """
     BART = import_or_skip('rbartpackages.BART')
     n, p = data.x.shape
-    y_train = (data.y > np.median(data.y)).astype(float)
     x_test = rng.standard_normal((7, p))
     m, _ = x_test.shape
     x_train = np.insert(data.x, 1, 1.0, axis=1)
@@ -300,7 +300,7 @@ def test_mc_gbart_binary(rng: np.random.Generator, data: Data) -> None:
     mc_cores = 2
     bart = BART.mc_gbart(
         x_train=x_train,
-        y_train=y_train,
+        y_train=data.biny,
         x_test=x_test,
         type='pbart',
         ntree=NTREE,
