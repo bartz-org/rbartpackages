@@ -93,13 +93,47 @@ def test_docstring() -> None:
         assert 'R documentation' in cls.__doc__
 
 
+def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
+    """Check `predict`, `extract`, and `fitted` against the fit's own draws.
+
+    The generics return expected values: probabilities for binary fits (the
+    `yhat_*` attributes stay on the latent probit scale), the function draws
+    for continuous ones.
+    """
+    m, _ = data.x_test.shape
+    pred = bart.predict(data.x_test)
+    assert pred.shape == (NDPOST, m)
+    # the kept trees evaluated at x_test reproduce the fit's test draws
+    latent = bart.predict(data.x_test, type='bart')
+    assert_close_matrices(latent, bart.yhat_test, rtol=1e-7)
+    if binary:
+        assert np.all((pred > 0) & (pred < 1))
+        assert_close_matrices(pred, phi(latent), rtol=1e-7)
+    else:
+        assert_array_equal(pred, latent)  # 'ev' and 'bart' agree
+
+    draws = bart.extract()  # training draws, expected-value scale
+    if binary:
+        assert_close_matrices(draws, phi(bart.yhat_train), rtol=1e-7)
+    else:
+        assert_array_equal(draws, bart.yhat_train)
+    assert_close_matrices(bart.fitted(), draws.mean(axis=0), rtol=1e-7)
+
+    trees = bart.extract(type='trees')
+    assert isinstance(trees, pd.DataFrame)
+    assert {'sample', 'tree', 'n', 'var', 'value'} <= set(trees.columns)
+
+
+@pytest.mark.parametrize('keeptrees', [False, True], ids=['no-trees', 'keeptrees'])
 @pytest.mark.parametrize('binary', [False, True], ids=['continuous', 'binary'])
-def test_bart(data: Data, binary: bool) -> None:
-    """Fit `bart` with test data and check the fit's outputs.
+def test_bart(data: Data, binary: bool, keeptrees: bool) -> None:
+    """Fit `bart` with test data and check the fit's outputs and generics.
 
     Binary (probit) fits drop the error-SD and derived-mean outputs and
     report the latent-scale offset instead; R fills the inapplicable list
-    components with NULL, which the wrapper exposes as None.
+    components with NULL, which the wrapper exposes as None. `keeptrees`
+    retains the sampler, enabling the generics and tree extraction checked
+    in `check_generics`.
     """
     n, p = data.x.shape
     m, _ = data.x_test.shape
@@ -110,6 +144,7 @@ def test_bart(data: Data, binary: bool) -> None:
         ntree=NTREE,
         nskip=NSKIP,
         ndpost=NDPOST,
+        keeptrees=keeptrees,
         verbose=False,
     )
 
@@ -117,9 +152,13 @@ def test_bart(data: Data, binary: bool) -> None:
     assert bart.yhat_test.shape == (NDPOST, m)
     assert bart.varcount.shape == (NDPOST, p)
     assert bart.varcount.dtype == np.int32
-    assert bart.n_chains == 1
-    assert bart.fit is None  # the sampler is not kept by default
     assert bart.k is None  # k is fixed by default, so it has no draws
+    if keeptrees:
+        assert bart.fit is not None
+        assert bart.n_chains is None  # reported only when the sampler is dropped
+    else:
+        assert bart.fit is None
+        assert bart.n_chains == 1
     if binary:
         assert_array_equal(bart.binaryOffset, np.zeros(n))
         assert bart.sigma is None
@@ -141,6 +180,9 @@ def test_bart(data: Data, binary: bool) -> None:
         assert_close_matrices(
             bart.yhat_test_mean, bart.yhat_test.mean(axis=0), rtol=1e-7
         )
+
+    if keeptrees:
+        check_generics(bart, data, binary)
 
 
 def test_bart_no_test_data(data: Data) -> None:
@@ -186,63 +228,14 @@ def test_bart_chains(data: Data, combine: bool) -> None:
         nthread=1,
         verbose=False,
     )
-    if combine:
-        assert bart.yhat_train.shape == (nchain * NDPOST, n)
-        assert bart.sigma.shape == (nchain * NDPOST,)
-        assert bart.first_sigma.shape == (nchain * NSKIP,)
-        assert bart.varcount.shape == (nchain * NDPOST, p)
-    else:
-        assert bart.yhat_train.shape == (nchain, NDPOST, n)
-        assert bart.sigma.shape == (nchain, NDPOST)
-        assert bart.first_sigma.shape == (nchain, NSKIP)
-        assert bart.varcount.shape == (nchain, NDPOST, p)
+    draws = (nchain * NDPOST,) if combine else (nchain, NDPOST)
+    burnin = (nchain * NSKIP,) if combine else (nchain, NSKIP)
+    assert bart.yhat_train.shape == (*draws, n)
+    assert bart.sigma.shape == draws
+    assert bart.first_sigma.shape == burnin
+    assert bart.varcount.shape == (*draws, p)
     assert bart.n_chains == nchain
     assert bart.yhat_train_mean.shape == (n,)
-
-
-@pytest.mark.parametrize('binary', [False, True], ids=['continuous', 'binary'])
-def test_bart_keeptrees(data: Data, binary: bool) -> None:
-    """`keeptrees` retains the sampler, enabling `predict` and tree extraction.
-
-    The generics return expected values: probabilities for binary fits (the
-    `yhat_*` attributes stay on the latent probit scale), the function draws
-    for continuous ones.
-    """
-    m, _ = data.x_test.shape
-    bart = dbarts.bart(
-        x_train=data.x,
-        y_train=data.biny if binary else data.y,
-        x_test=data.x_test,
-        ntree=NTREE,
-        nskip=NSKIP,
-        ndpost=NDPOST,
-        verbose=False,
-        keeptrees=True,
-    )
-    assert bart.fit is not None
-    assert bart.n_chains is None  # reported only when the sampler is dropped
-
-    pred = bart.predict(data.x_test)
-    assert pred.shape == (NDPOST, m)
-    # the kept trees evaluated at x_test reproduce the fit's test draws
-    latent = bart.predict(data.x_test, type='bart')
-    assert_close_matrices(latent, bart.yhat_test, rtol=1e-7)
-    if binary:
-        assert np.all((pred > 0) & (pred < 1))
-        assert_close_matrices(pred, phi(latent), rtol=1e-7)
-    else:
-        assert_array_equal(pred, latent)  # 'ev' and 'bart' agree
-
-    draws = bart.extract()  # training draws, expected-value scale
-    if binary:
-        assert_close_matrices(draws, phi(bart.yhat_train), rtol=1e-7)
-    else:
-        assert_array_equal(draws, bart.yhat_train)
-    assert_close_matrices(bart.fitted(), draws.mean(axis=0), rtol=1e-7)
-
-    trees = bart.extract(type='trees')
-    assert isinstance(trees, pd.DataFrame)
-    assert {'sample', 'tree', 'n', 'var', 'value'} <= set(trees.columns)
 
 
 def test_bart_splitprobs(data: Data) -> None:
