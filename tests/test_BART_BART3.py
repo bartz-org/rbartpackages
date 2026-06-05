@@ -105,14 +105,14 @@ def test_docstring(pkg: ModuleType) -> None:
 def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
     """Without `x_test` the derived test-set attributes are left unset.
 
-    The fit also has a constant column (dropped, reported through `rm_const`),
-    no burn-in (BART computes `LPML` anyway, BART3 does not), and thinning
-    (BART's `sigma` keeps the thinned-away draws too, BART3's drops them).
+    The fit also has no burn-in (BART computes `LPML` anyway, BART3 does not)
+    and thinning (BART's `sigma` keeps the thinned-away draws too, BART3's
+    drops them).
     """
-    n, p = data.x.shape
+    n, _ = data.x.shape
     keepevery = 2
     bart = pkg.gbart(
-        x_train=data.x_const,
+        x_train=data.x,
         y_train=data.y,
         ntree=NTREE,
         nskip=0,
@@ -122,10 +122,6 @@ def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
     assert bart.ndpost == NDPOST
     assert bart.yhat_train.shape == (NDPOST, n)
     assert bart.yhat_train_mean.shape == (n,)
-    # R reports the dropped constant column as a negative rm.const index; the
-    # wrapper turns that into the kept 0-based column indices
-    assert_array_equal(bart.rm_const, np.array([0, 2, 3], np.int32))
-    assert bart.varcount.shape == (NDPOST, p)
     assert isinstance(bart.sigma_mean, float)
     if is_BART3(pkg):
         assert bart.LPML is None  # only computed with burn-in
@@ -134,9 +130,9 @@ def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
     else:
         assert isinstance(bart.LPML, float)  # computed even without burn-in
         assert bart.sigma.shape == (NDPOST * keepevery,)  # one draw per iteration
-        assert_array_equal(bart.hostname, np.array([False]))
+        assert_array_equal(bart.hostname, np.array([False]))  # the default
 
-    yhat = bart.predict(data.x_const[:, bart.rm_const])
+    yhat = bart.predict(data.x)
     assert yhat.shape == (NDPOST, n)
     assert_close_matrices(yhat.mean(axis=0), bart.yhat_train_mean, rtol=1e-5)
 
@@ -146,93 +142,104 @@ def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
     assert bart.yhat_test_mean is None
 
 
-def fit_gbart_test_data(pkg: ModuleType, data: Data, binary: bool) -> tuple:
-    """Fit `gbart` with test data and check the outputs common to both paths."""
-    n, _ = data.x.shape
+def check_predict(
+    pkg: ModuleType, bart: object, x_test: Float64[ndarray, 'm p'], binary: bool
+) -> None:
+    """Check `predict` on `x_test` against the fit's own test-set outputs."""
+    m, _ = x_test.shape
+    # predict wants the kept columns only
+    pred = bart.predict(x_test[:, bart.rm_const])
+    if binary:
+        # R's predict for binary fits returns a list; the wrapper exposes it
+        # as a dict of arrays (continuous fits return a bare matrix instead).
+        assert isinstance(pred, dict)
+        expected_keys = ['binaryOffset', 'prob_test', 'prob_test_mean', 'yhat_test']
+        if is_BART3(pkg):
+            # BART3 adds the prob.test.lower/upper quantiles to the output
+            expected_keys += ['prob_test_lower', 'prob_test_upper']
+            assert np.all(pred['prob_test_lower'] <= pred['prob_test_upper'])
+        assert sorted(pred) == sorted(expected_keys)
+        assert pred['yhat_test'].shape == (NDPOST, m)
+        assert pred['prob_test'].shape == (NDPOST, m)
+        assert pred['prob_test_mean'].shape == (m,)
+        assert isinstance(pred['binaryOffset'], float)
+        assert_close_matrices(pred['prob_test_mean'], bart.prob_test_mean, rtol=1e-5)
+    else:
+        assert pred.shape == (NDPOST, m)
+        assert_close_matrices(pred.mean(axis=0), bart.yhat_test_mean, rtol=1e-5)
+
+
+@pytest.mark.parametrize('const', [False, True], ids=['no-const', 'const'])
+@pytest.mark.parametrize('binary', [False, True], ids=['continuous', 'binary'])
+def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
+    """Fit `gbart` with test data and check the fit's outputs and `predict`.
+
+    Binary (`pbart`) fits populate the probability-scale `prob_*` outputs in
+    place of the derived `yhat_*_mean` ones, have no `sigma`, and `predict`
+    returns a dict instead of the bare draws matrix; BART3 additionally
+    exposes posterior quantiles and the prior's `sigest`. A constant column
+    is dropped by R and reported as a negative 1-based `rm_const` index,
+    which the wrapper turns into the kept 0-based column indices.
+    """
+    n, p = data.x.shape
     m, _ = data.x_test.shape
+    x_train = data.x_const if const else data.x
+    x_test = data.x_test_const if const else data.x_test
     kw = dict() if is_BART3(pkg) else dict(hostname=True)  # BART3 dropped hostname
     bart = pkg.gbart(
-        x_train=data.x,
+        x_train=x_train,
         y_train=data.biny if binary else data.y,
-        x_test=data.x_test,
+        x_test=x_test,
         type='pbart' if binary else 'wbart',
         ntree=NTREE,
         nskip=NSKIP,
         ndpost=NDPOST,
         **kw,
     )
+
+    # outputs common to all configurations
     assert bart.ndpost == NDPOST
     assert bart.yhat_train.shape == (NDPOST, n)
     assert bart.yhat_test.shape == (NDPOST, m)
+    expected_rm_const = [0, 2, 3] if const else [0, 1, 2]
+    assert_array_equal(bart.rm_const, np.array(expected_rm_const, np.int32))
+    assert bart.varcount.shape == (NDPOST, p)  # kept columns only
     assert isinstance(bart.LPML, float)
     if is_BART3(pkg):
-        assert bart.x_test.shape == data.x_test.shape
+        assert bart.x_test.shape == (m, p)  # kept columns only
     else:
         assert bart.hostname.shape == (1,)
         assert bart.hostname.dtype.kind == 'U'  # the fitting machine's hostname
-    return bart, n, m
 
+    if binary:
+        assert bart.prob_train.shape == (NDPOST, n)
+        assert bart.prob_train_mean.shape == (n,)
+        assert bart.prob_test.shape == (NDPOST, m)
+        assert bart.prob_test_mean.shape == (m,)
+        assert bart.sigma is None
+        assert bart.sigma_mean is None
+        assert bart.yhat_train_mean is None  # R sets prob.train.mean instead
+        assert bart.yhat_test_mean is None
+        if is_BART3(pkg):
+            assert bart.prob_test_lower.shape == (m,)
+            assert bart.prob_test_upper.shape == (m,)
+            assert np.all(bart.prob_test_lower <= bart.prob_test_upper)
+            assert bart.sigest is None  # not estimated for binary outcomes
+    else:
+        assert bart.yhat_train_mean.shape == (n,)
+        assert bart.yhat_test_mean.shape == (m,)
+        assert bart.sigma.shape == (NSKIP + NDPOST,)
+        assert isinstance(bart.sigma_mean, float)
+        assert bart.prob_train is None
+        assert bart.prob_test is None
+        if is_BART3(pkg):
+            assert bart.yhat_test_lower.shape == (m,)
+            assert bart.yhat_test_upper.shape == (m,)
+            assert np.all(bart.yhat_test_lower <= bart.yhat_test_upper)
+            assert isinstance(bart.sigest, float)
+            assert math.isfinite(bart.sigest)
 
-def test_gbart_test_data_continuous(pkg: ModuleType, data: Data) -> None:
-    """Passing `x_test` populates the test-set outputs of a `wbart` fit.
-
-    `predict` returns the bare draws matrix; BART3 additionally exposes
-    posterior quantiles and the prior's `sigest`.
-    """
-    bart, n, m = fit_gbart_test_data(pkg, data, binary=False)
-    assert bart.yhat_train_mean.shape == (n,)
-    assert bart.yhat_test_mean.shape == (m,)
-    assert bart.sigma.shape == (NSKIP + NDPOST,)
-    assert isinstance(bart.sigma_mean, float)
-    assert bart.prob_train is None
-    assert bart.prob_test is None
-    if is_BART3(pkg):
-        assert bart.yhat_test_lower.shape == (m,)
-        assert bart.yhat_test_upper.shape == (m,)
-        assert np.all(bart.yhat_test_lower <= bart.yhat_test_upper)
-        assert isinstance(bart.sigest, float)
-        assert math.isfinite(bart.sigest)
-
-    pred = bart.predict(data.x_test)
-    assert pred.shape == (NDPOST, m)
-    assert_close_matrices(pred.mean(axis=0), bart.yhat_test_mean, rtol=1e-5)
-
-
-def test_gbart_test_data_binary(pkg: ModuleType, data: Data) -> None:
-    """Passing `x_test` populates the test-set outputs of a `pbart` fit.
-
-    The probability-scale `prob_*` outputs replace the derived `yhat_*_mean`
-    ones; BART3 additionally exposes posterior quantiles.
-    """
-    bart, n, m = fit_gbart_test_data(pkg, data, binary=True)
-    assert bart.prob_train.shape == (NDPOST, n)
-    assert bart.prob_train_mean.shape == (n,)
-    assert bart.prob_test.shape == (NDPOST, m)
-    assert bart.prob_test_mean.shape == (m,)
-    assert bart.sigma is None
-    assert bart.sigma_mean is None
-    assert bart.yhat_train_mean is None  # R sets prob.train.mean instead
-    assert bart.yhat_test_mean is None
-    if is_BART3(pkg):
-        assert bart.prob_test_lower.shape == (m,)
-        assert bart.prob_test_upper.shape == (m,)
-        assert np.all(bart.prob_test_lower <= bart.prob_test_upper)
-        assert bart.sigest is None  # not estimated for binary outcomes
-
-    # R's predict for binary fits returns a list; the wrapper exposes it as
-    # a dict of arrays (continuous fits return a bare matrix instead).
-    pred = bart.predict(data.x_test)
-    assert isinstance(pred, dict)
-    expected_keys = ['binaryOffset', 'prob_test', 'prob_test_mean', 'yhat_test']
-    if is_BART3(pkg):
-        # BART3 adds the prob.test.lower/upper quantiles to the output
-        expected_keys += ['prob_test_lower', 'prob_test_upper']
-        assert np.all(pred['prob_test_lower'] <= pred['prob_test_upper'])
-    assert sorted(pred) == sorted(expected_keys)
-    assert pred['yhat_test'].shape == (NDPOST, m)
-    assert pred['prob_test'].shape == (NDPOST, m)
-    assert pred['prob_test_mean'].shape == (m,)
-    assert isinstance(pred['binaryOffset'], float)
+    check_predict(pkg, bart, x_test, binary)
 
 
 @pytest.mark.timeout(180)
