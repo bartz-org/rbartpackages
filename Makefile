@@ -149,6 +149,8 @@ docs:
 	@echo
 	@echo "Now open _site/index.html"
 
+# The worktree gets its own (empty) renv library, so restore it before building
+# the docs there; it's fast because it links from the shared renv cache.
 .PHONY: docs-latest
 docs-latest:
 	@LATEST_TAG=$$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -1) && \
@@ -157,6 +159,7 @@ docs-latest:
 	WORKTREE_DIR=$$(mktemp -d) && \
 	trap "git worktree remove --force '$$WORKTREE_DIR' 2>/dev/null || rm -rf '$$WORKTREE_DIR'" EXIT && \
 	git worktree add --detach "$$WORKTREE_DIR" "$$LATEST_TAG" && \
+	( cd "$$WORKTREE_DIR" && Rscript -e "renv::restore()" ) && \
 	$(MAKE) -C "$$WORKTREE_DIR" docs && \
 	test ! -d _site/docs || rm -r _site/docs && \
 	mv "$$WORKTREE_DIR/_site/docs-dev" _site/docs
