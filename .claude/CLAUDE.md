@@ -6,8 +6,6 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 rbartpackages — Python wrappers of R BART (Bayesian Additive Regression Trees) packages, built on `rpy2`. It wraps `BART`, `BART3`, `bartMachine`, and `dbarts` behind a uniform interface: arguments are converted to R, the fitted R object's components become Python attributes, and each wrapper class's docstring is augmented with the upstream R documentation (fetched at import time).
 
-The wrappers originated inside the `bartz` project (where they validate against reference R implementations) and were extracted into this standalone package.
-
 ## Commands
 
 All development commands are make targets. All make targets use `uv run` under the hood.
@@ -76,7 +74,6 @@ The R dependencies are pinned in `renv.lock` (regenerate via renv, do not hand-e
 - pytest, with parametrization and subtests
 - global `rng` fixture provides a deterministic per-test `numpy.random.Generator` (use it directly)
     - to seed R, do `from tests.util import int_seed; int_seed(rng)`
-- tests that need an R package which may be missing should use `tests.util.import_or_skip` so they skip (rather than error) when the package (or some heavy dep like Java) is unavailable
 - to compare vectors/matrices/tensors, use `tests.util.assert_close_matrices` (and `assert_different_matrices`) instead of numpy's `assert_allclose`
     - use `rtol`, add `atol` only when comparing values near zero
 - prefer the `assert_*` helpers from `tests.util` and `numpy.testing` to plain `assert` where appropriate
