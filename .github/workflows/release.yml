@@ -34,6 +34,10 @@ on:
 jobs:
   tests:
     runs-on: ubuntu-latest
+    env:
+      # rpy2-rinterface ships no wheels and needs R at build time in API mode;
+      # ABI mode builds without R, and the smoke test below never touches rpy2.
+      RPY2_CFFI_MODE: ABI
     steps:
       - name: Check out repo
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
