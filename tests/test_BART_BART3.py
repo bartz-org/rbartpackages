@@ -27,8 +27,7 @@
 BART3 is a fork of BART with mostly the same interface, so the two wrappers
 share their tests: the `pkg` fixture runs each test once per wrapper module,
 with conditionals where the packages diverge (bugs specific to BART, features
-added in BART3). Tests of BART-only behavior are not parametrized and import
-the module directly.
+added in BART3). Tests of BART-only behavior skip on BART3.
 """
 
 import math
@@ -286,7 +285,7 @@ def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
 
 
 @pytest.mark.timeout(180)
-def test_mc_gbart_binary(data: Data) -> None:
+def test_mc_gbart_binary(pkg: ModuleType, data: Data) -> None:
     """`mc.gbart` with binary outcomes leaves some outputs uncombined.
 
     R combines `yhat_*` across the chains but forgets `prob_*`, which keep the
@@ -294,14 +293,15 @@ def test_mc_gbart_binary(data: Data) -> None:
     (negative `rm_const`, fixed up by the wrapper) but then miscounts the kept
     columns and fails to update the serialized-ensemble header, so `predict`
     returns the first chain's draws only. These bugs are BART-specific, so the
-    test is not shared with BART3.
+    test skips on BART3.
     """
-    BART = import_or_skip('rbartpackages.BART')
+    if is_BART3(pkg):
+        pytest.skip('tests BART-specific bugs')
     n, _ = data.x.shape
     m, _ = data.x_test.shape
 
     mc_cores = 2
-    bart = BART.mc_gbart(
+    bart = pkg.mc_gbart(
         x_train=data.x_const,
         y_train=data.biny,
         x_test=data.x_test_const,
