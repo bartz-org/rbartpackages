@@ -1,4 +1,4 @@
-# rbartpackages/tests/test_BART.py
+# rbartpackages/tests/test_base.py
 #
 # Copyright (c) 2026, The rbartpackages Contributors
 #
@@ -22,41 +22,34 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Tests for the BART wrapper."""
+"""Tests for the shared wrapper plumbing in `rbartpackages._base`."""
 
-import numpy as np
+import ctypes
+from types import SimpleNamespace
 
-from tests.util import import_or_skip
+import pytest
 
-BART = import_or_skip('rbartpackages.BART')
-
-NDPOST = 20
-NSKIP = 20
-NTREE = 10
+from rbartpackages import _base
 
 
-def make_data(rng: np.random.Generator, n: int = 30, p: int = 3) -> tuple:
-    """Generate a small regression dataset."""
-    x_train = rng.standard_normal((n, p))
-    y_train = x_train[:, 0] + 0.1 * rng.standard_normal(n)
-    return x_train, y_train
+def test_fork_safe_native_threads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pools are capped at one thread in the context and restored on exit."""
+    calls: list[int] = []
 
+    def omp_get_max_threads() -> int:
+        return 4
 
-def test_docstring() -> None:
-    """The R documentation is attached to the wrapper class."""
-    assert 'R documentation' in BART.gbart.__doc__
+    def omp_set_num_threads(nthreads: int) -> None:
+        calls.append(nthreads)
 
-
-def test_gbart_fit(rng: np.random.Generator) -> None:
-    """Fit `gbart` and check the output shapes and predictions."""
-    x_train, y_train = make_data(rng)
-    n, _ = x_train.shape
-    bart = BART.gbart(
-        x_train=x_train, y_train=y_train, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
+    # expose only the OpenMP pair: the OpenBLAS lookup must be skipped
+    handle = SimpleNamespace(
+        omp_get_max_threads=omp_get_max_threads, omp_set_num_threads=omp_set_num_threads
     )
-    assert bart.ndpost == NDPOST
-    assert bart.yhat_train.shape == (NDPOST, n)
+    monkeypatch.setattr(ctypes, 'CDLL', lambda name: handle)  # noqa: ARG005
 
-    yhat = bart.predict(x_train)
-    assert yhat.shape[0] == NDPOST
-    assert yhat.shape[-1] == n
+    with _base.fork_safe_native_threads():
+        assert calls == [1]
+    assert calls == [1, 4]
+    assert omp_get_max_threads.restype is ctypes.c_int
+    assert omp_set_num_threads.argtypes == (ctypes.c_int,)

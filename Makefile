@@ -116,7 +116,7 @@ clean:
 #   make tests-old  GROUP=others
 # Leaving GROUP unset runs the whole suite. The matrix in
 # `.github/workflows/tests.yml` lists these same names; keep them in sync.
-GROUP_bart    := tests/test_BART.py tests/test_BART3.py tests/test_version.py
+GROUP_bart    := tests/test_BART_BART3.py tests/test_base.py tests/test_version.py
 GROUP_others  := tests/test_dbarts.py tests/test_bartMachine.py
 
 GROUPS := bart others
@@ -175,10 +175,7 @@ covcheck:
 	$(UV_RUN) coverage report --include='tests/**/test_*.py'
 	$(UV_RUN) coverage report --include='src/*'
 	$(UV_RUN) coverage report --include='tests/**/test_*.py' --fail-under=99 --format=total
-	# TODO: src coverage is gated at 80% for now because the standalone suite
-	# is still light (the comprehensive validation tests live in bartz). Bump
-	# back to 90% once the converter / error-path tests are backfilled.
-	$(UV_RUN) coverage report --include='src/*' --fail-under=80 --format=total
+	$(UV_RUN) coverage report --include='src/*' --fail-under=85 --format=total
 
 # Branch (changed-lines) coverage: fail if new/modified lines in src and tests
 # are not covered above the threshold. DIFF_BASE is the ref to diff against;
