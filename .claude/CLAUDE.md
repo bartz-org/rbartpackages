@@ -62,6 +62,7 @@ The R dependencies are pinned in `renv.lock` (regenerate via renv, do not hand-e
     - do not stringify type annotations
     - jaxtyping for array shapes (`Float64[ndarray, 'n p']`); these annotate numpy arrays and are documentation only (not runtime-checked)
     - space before a single-axis annotation `Float64[ndarray, ' n']` because of a linter bug
+        - same trick for anything that ruff would parse as a quoted expression
     - type hints go in signatures, not docstrings; when returning multiple values, copy the hints verbatim in the return list (the html doc render needs it)
 - **python conventions:**
     - use dicts as if frozen: `d = dict(d, a=1)` rather than `d['a'] = 1`

@@ -185,11 +185,11 @@ class mc_gbart(RObjectBase):  # noqa: D101 because the R doc is added automatica
     varprob_mean: Float64[ndarray, ' p']
     """Posterior mean of `varprob` per variable."""
 
-    x_test: Float64[ndarray, ' m p'] | None = None
-    """Test design matrix as used (after imputation and factor expansion)."""
+    x_test: Float64[ndarray, ' m <=p'] | None = None
+    """Test design matrix as used (imputed, factors expanded, constant columns dropped)."""
 
-    x_train: Float64[ndarray, ' n p']
-    """Training design matrix as used (original scale, not binned)."""
+    x_train: Float64[ndarray, ' n <=p']
+    """Training design matrix as used (original scale, not binned; constant columns dropped)."""
 
     yhat_test: Float64[ndarray, 'ndpost m']
     """Test-point posterior function draws (latent scale for binary).
