@@ -24,32 +24,14 @@
 
 """Functions intended to be shared across the test suite."""
 
-from importlib import import_module
 from operator import ge, le
-from types import ModuleType
 from typing import Any
 
 import numpy as np
-import pytest
 from numpy.linalg import norm
 from numpy.testing import assert_allclose as _np_assert_allclose  # noqa: TID251
 from numpy.testing import assert_array_equal as _np_assert_array_equal  # noqa: TID251
 from numpy.typing import ArrayLike
-
-
-def import_or_skip(module_name: str) -> ModuleType:
-    """Import a wrapper module, skipping the whole test module if R can't load it.
-
-    Importing a wrapper (e.g. ``rbartpackages.BART3``) pulls the matching R
-    package's documentation at class-definition time, so it fails when the R
-    package (or R itself, or Java for ``bartMachine``) is unavailable. Treat any
-    such failure as a skip rather than an error.
-    """
-    assert module_name.startswith('rbartpackages.'), module_name
-    try:
-        return import_module(module_name)
-    except Exception as exc:  # noqa: BLE001
-        pytest.skip(f'cannot import {module_name}: {exc}', allow_module_level=True)
 
 
 def assert_close_matrices(

@@ -27,9 +27,7 @@
 import numpy as np
 import pandas as pd
 
-from tests.util import import_or_skip
-
-bartmachine = import_or_skip('rbartpackages.bartMachine')
+from rbartpackages import bartMachine
 
 NTREE = 10
 NBURN = 20
@@ -50,14 +48,14 @@ def make_data(rng: np.random.Generator, n: int = 40, p: int = 3) -> tuple:
 
 def test_docstring() -> None:
     """The R documentation is attached to the wrapper class."""
-    assert 'R documentation' in bartmachine.bartMachine.__doc__
+    assert 'R documentation' in bartMachine.bartMachine.__doc__
 
 
 def test_bartmachine_fit(rng: np.random.Generator) -> None:
     """Fit `bartMachine` and check predictions have the right length."""
     x, y = make_data(rng)
     n, _ = x.shape
-    bm = bartmachine.bartMachine(
+    bm = bartMachine.bartMachine(
         X=x,
         y=y,
         num_trees=NTREE,

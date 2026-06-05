@@ -40,22 +40,18 @@ import pytest
 from jaxtyping import Float64
 from numpy import ndarray
 
-from tests.util import assert_array_equal, assert_close_matrices, import_or_skip
+from rbartpackages import BART, BART3
+from tests.util import assert_array_equal, assert_close_matrices
 
 NDPOST = 20
 NSKIP = 20
 NTREE = 10
 
 
-@pytest.fixture(scope='module', params=['BART', 'BART3'])
+@pytest.fixture(params=[BART, BART3], ids=['BART', 'BART3'])
 def pkg(request: pytest.FixtureRequest) -> ModuleType:
     """Return the wrapper module under test."""
-    return import_or_skip(f'rbartpackages.{request.param}')
-
-
-def is_BART3(pkg: ModuleType) -> bool:
-    """Tell the two wrapper modules apart in conditional test logic."""
-    return pkg.__name__ == 'rbartpackages.BART3'
+    return request.param
 
 
 @dataclass(frozen=True)
@@ -123,7 +119,7 @@ def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
     assert bart.yhat_train.shape == (NDPOST, n)
     assert bart.yhat_train_mean.shape == (n,)
     assert isinstance(bart.sigma_mean, float)
-    if is_BART3(pkg):
+    if pkg is BART3:
         assert bart.LPML is None  # only computed with burn-in
         assert bart.sigma.shape == (NDPOST,)  # thinned-away draws dropped
         assert bart.x_test is None
@@ -143,7 +139,7 @@ def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
 
 
 def check_predict(
-    pkg: ModuleType, bart: object, x_test: Float64[ndarray, 'm p'], binary: bool
+    bart: BART.gbart | BART3.gbart, x_test: Float64[ndarray, 'm p'], binary: bool
 ) -> None:
     """Check `predict` on `x_test` against the fit's own test-set outputs."""
     m, _ = x_test.shape
@@ -154,7 +150,7 @@ def check_predict(
         # as a dict of arrays (continuous fits return a bare matrix instead).
         assert isinstance(pred, dict)
         expected_keys = ['binaryOffset', 'prob_test', 'prob_test_mean', 'yhat_test']
-        if is_BART3(pkg):
+        if isinstance(bart, BART3.gbart):
             # BART3 adds the prob.test.lower/upper quantiles to the output
             expected_keys += ['prob_test_lower', 'prob_test_upper']
             assert np.all(pred['prob_test_lower'] <= pred['prob_test_upper'])
@@ -185,7 +181,7 @@ def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
     m, _ = data.x_test.shape
     x_train = data.x_const if const else data.x
     x_test = data.x_test_const if const else data.x_test
-    kw = dict() if is_BART3(pkg) else dict(hostname=True)  # BART3 dropped hostname
+    kw = dict() if pkg is BART3 else dict(hostname=True)  # BART3 dropped hostname
     bart = pkg.gbart(
         x_train=x_train,
         y_train=data.biny if binary else data.y,
@@ -205,7 +201,7 @@ def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
     assert_array_equal(bart.rm_const, np.array(expected_rm_const, np.int32))
     assert bart.varcount.shape == (NDPOST, p)  # kept columns only
     assert isinstance(bart.LPML, float)
-    if is_BART3(pkg):
+    if pkg is BART3:
         assert bart.x_test.shape == (m, p)  # kept columns only
     else:
         assert bart.hostname.shape == (1,)
@@ -220,7 +216,7 @@ def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
         assert bart.sigma_mean is None
         assert bart.yhat_train_mean is None  # R sets prob.train.mean instead
         assert bart.yhat_test_mean is None
-        if is_BART3(pkg):
+        if pkg is BART3:
             assert bart.prob_test_lower.shape == (m,)
             assert bart.prob_test_upper.shape == (m,)
             assert np.all(bart.prob_test_lower <= bart.prob_test_upper)
@@ -232,14 +228,14 @@ def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
         assert isinstance(bart.sigma_mean, float)
         assert bart.prob_train is None
         assert bart.prob_test is None
-        if is_BART3(pkg):
+        if pkg is BART3:
             assert bart.yhat_test_lower.shape == (m,)
             assert bart.yhat_test_upper.shape == (m,)
             assert np.all(bart.yhat_test_lower <= bart.yhat_test_upper)
             assert isinstance(bart.sigest, float)
             assert math.isfinite(bart.sigest)
 
-    check_predict(pkg, bart, x_test, binary)
+    check_predict(bart, x_test, binary)
 
 
 @pytest.mark.timeout(180)
@@ -277,7 +273,7 @@ def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
     assert bart.sigma.shape == (NSKIP + bart.ndpost // mc_cores, mc_cores)
     # without test data R does not even combine the chains' empty yhat.test
     assert bart.yhat_test.shape == (bart.ndpost // mc_cores, 0)
-    if is_BART3(pkg):
+    if pkg is BART3:
         assert bart.chains == mc_cores
         # mc.gbart overwrites sigest with its logical-NA default; __init__ -> nan.
         assert isinstance(bart.sigest, float)
@@ -302,7 +298,7 @@ def test_mc_gbart_binary(pkg: ModuleType, data: Data) -> None:
     returns the first chain's draws only. These bugs are BART-specific, so the
     test skips on BART3.
     """
-    if is_BART3(pkg):
+    if pkg is BART3:
         pytest.skip('tests BART-specific bugs')
     n, _ = data.x.shape
     m, _ = data.x_test.shape
@@ -369,7 +365,7 @@ def test_bartModelMatrix(pkg: ModuleType, numcut: int, factor: bool) -> None:
         if not factor:
             # no grp: matrix input for BART, no factor columns for BART3
             assert out.grp is None
-        elif is_BART3(pkg):
+        elif pkg is BART3:
             # number of indicator columns each input column expands to
             assert_array_equal(out.grp, [1, 1, 2, 2], strict=False)
         else:

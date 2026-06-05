@@ -26,9 +26,7 @@
 
 import numpy as np
 
-from tests.util import import_or_skip
-
-dbarts = import_or_skip('rbartpackages.dbarts')
+from rbartpackages import dbarts
 
 NDPOST = 20
 NSKIP = 20
