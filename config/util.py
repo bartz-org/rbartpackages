@@ -63,25 +63,30 @@ def _read_changelog_section() -> tuple[str, str, str, str]:
 
     Returns ``(version, title, date, body)``. Raises ValueError if the
     changelog cannot be parsed, the topmost section's version does not match
-    pyproject.toml, or the date is not today.
+    pyproject.toml, or the date is not today. The topmost section ends at the
+    next release header, or at the end of the file if it is the only one.
     """
     version = get_version()
     lines = CHANGELOG_PATH.read_text().splitlines()
     headers = [i for i, line in enumerate(lines) if line.startswith('## ')]
-    if len(headers) < 2:
-        msg = f'Expected at least 2 release headers in {CHANGELOG_PATH}, found {len(headers)}'
+    if not headers:
+        msg = f'No release headers found in {CHANGELOG_PATH}'
         raise ValueError(msg)
-    first, second = headers[0], headers[1]
+    first = headers[0]
     v, title, date = _parse_changelog_header(lines[first])
     if v != version:
         msg = f'Topmost changelog section is for {v!r}, expected {version!r}'
         raise ValueError(msg)
-    _parse_changelog_header(lines[second])  # validate boundary header
+    if len(headers) > 1:
+        end = headers[1]
+        _parse_changelog_header(lines[end])  # validate boundary header
+    else:
+        end = len(lines)
     today = datetime.datetime.now(tz=datetime.timezone.utc).date().isoformat()
     if date != today:
         msg = f'Changelog date {date} does not match today {today}'
         raise ValueError(msg)
-    body = '\n'.join(lines[first + 1 : second]).strip('\n')
+    body = '\n'.join(lines[first + 1 : end]).strip('\n')
     return version, title, date, body
 
 

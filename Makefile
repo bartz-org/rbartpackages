@@ -30,7 +30,7 @@ UV_RUN = uv run --dev
 # define command to run python with oldest supported dependencies
 # OLD_DATE / OLD_DELAY_DAYS / BUMP_PYTHON_VERSION_DATE / NUM_SUPPORTED_PYTHON_RELEASES
 # drive the `update-oldest-deps` policy.
-OLD_DATE = 2025-05-27
+OLD_DATE = 2025-06-05
 OLD_DELAY_DAYS = 365
 BUMP_PYTHON_VERSION_DATE = 10-31
 NUM_SUPPORTED_PYTHON_RELEASES = 5
@@ -48,7 +48,7 @@ help:
 	@echo "- covreport: build html coverage report"
 	@echo "- covcheck: check coverage is above some thresholds"
 	@echo "- diffcov: check changed-lines coverage vs DIFF_BASE (default origin/main)"
-	@echo "- update-deps: remove .venv, upgrade uv.lock, update pre-commit hooks"
+	@echo "- update-deps: upgrade uv.lock, update pre-commit hooks"
 	@echo "- update-oldest-deps: advance OLD_DATE and refresh oldest-supported pins in pyproject.toml"
 	@echo "- copy-version: sync version from pyproject.toml to _version.py"
 	@echo "- check-committed: verify there are no uncommitted changes"
@@ -78,7 +78,7 @@ help:
 	@echo "- merge a PR with the changes"
 	@echo "- on main: $$ make release"
 	@echo "- merge fix PR and try again until make release passes"
-	@echo "- publish the draft github release created by make release (updates zenodo automatically)"
+	@echo "- publish the draft github release created by make release"
 	@echo "- if the online docs are not up-to-date, merge another PR to trigger a new merge CI"
 
 
@@ -149,6 +149,8 @@ docs:
 	@echo
 	@echo "Now open _site/index.html"
 
+# The worktree gets its own (empty) renv library, so restore it before building
+# the docs there; it's fast because it links from the shared renv cache.
 .PHONY: docs-latest
 docs-latest:
 	@LATEST_TAG=$$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$$' | sort -V | tail -1) && \
@@ -157,6 +159,7 @@ docs-latest:
 	WORKTREE_DIR=$$(mktemp -d) && \
 	trap "git worktree remove --force '$$WORKTREE_DIR' 2>/dev/null || rm -rf '$$WORKTREE_DIR'" EXIT && \
 	git worktree add --detach "$$WORKTREE_DIR" "$$LATEST_TAG" && \
+	( cd "$$WORKTREE_DIR" && Rscript -e "renv::restore()" ) && \
 	$(MAKE) -C "$$WORKTREE_DIR" docs && \
 	test ! -d _site/docs || rm -r _site/docs && \
 	mv "$$WORKTREE_DIR/_site/docs-dev" _site/docs

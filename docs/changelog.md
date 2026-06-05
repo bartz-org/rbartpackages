@@ -31,11 +31,6 @@ SOFTWARE.
 # Changelog
 
 
-## Next release
+## 0.1.0 Butterjit Advanced Retrieval Trainchoke (2026-06-05)
 
 Initial standalone release. `rbartpackages` provides Python wrappers, built on `rpy2`, of the R BART packages `BART`, `BART3`, `bartMachine`, and `dbarts`. The code was previously developed inside the bartz repository.
-
-
-## 0.0.0 Genesis (2026-06-02)
-
-Reserved as the changelog boundary marker.
