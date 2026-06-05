@@ -48,7 +48,7 @@ help:
 	@echo "- covreport: build html coverage report"
 	@echo "- covcheck: check coverage is above some thresholds"
 	@echo "- diffcov: check changed-lines coverage vs DIFF_BASE (default origin/main)"
-	@echo "- update-deps: remove .venv, upgrade uv.lock, update pre-commit hooks"
+	@echo "- update-deps: upgrade uv.lock, update pre-commit hooks"
 	@echo "- update-oldest-deps: advance OLD_DATE and refresh oldest-supported pins in pyproject.toml"
 	@echo "- copy-version: sync version from pyproject.toml to _version.py"
 	@echo "- check-committed: verify there are no uncommitted changes"
@@ -78,7 +78,7 @@ help:
 	@echo "- merge a PR with the changes"
 	@echo "- on main: $$ make release"
 	@echo "- merge fix PR and try again until make release passes"
-	@echo "- publish the draft github release created by make release (updates zenodo automatically)"
+	@echo "- publish the draft github release created by make release"
 	@echo "- if the online docs are not up-to-date, merge another PR to trigger a new merge CI"
 
 
