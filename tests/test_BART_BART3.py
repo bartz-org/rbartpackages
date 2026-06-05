@@ -69,10 +69,23 @@ class Data:
     y: Float64[ndarray, ' n']
     """Outcomes, the first predictor plus noise."""
 
+    x_test: Float64[ndarray, 'm p']
+    """Test-set predictors."""
+
     @property
     def biny(self) -> Float64[ndarray, ' n']:
         """Outcomes binarized at their median, for binary-outcome fits."""
         return (self.y > np.median(self.y)).astype(float)
+
+    @property
+    def x_const(self) -> Float64[ndarray, 'n p+1']:
+        """`x` with a constant column inserted at index 1, for `rm_const` tests."""
+        return np.insert(self.x, 1, 1.0, axis=1)
+
+    @property
+    def x_test_const(self) -> Float64[ndarray, 'm p+1']:
+        """`x_test` with the same constant column as `x_const`."""
+        return np.insert(self.x_test, 1, 1.0, axis=1)
 
 
 @pytest.fixture
@@ -81,7 +94,8 @@ def data(rng: np.random.Generator) -> Data:
     n, p = 30, 3
     x = rng.standard_normal((n, p))
     y = x[:, 0] + 0.1 * rng.standard_normal(n)
-    return Data(x, y)
+    x_test = rng.standard_normal((7, p))
+    return Data(x, y, x_test)
 
 
 def test_docstring(pkg: ModuleType) -> None:
@@ -97,12 +111,9 @@ def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
     (BART's `sigma` keeps the thinned-away draws too, BART3's drops them).
     """
     n, p = data.x.shape
-    # R reports the dropped constant column as a negative rm.const index; the
-    # wrapper turns that into the kept 0-based column indices
-    x_train = np.insert(data.x, 1, 1.0, axis=1)
     keepevery = 2
     bart = pkg.gbart(
-        x_train=x_train,
+        x_train=data.x_const,
         y_train=data.y,
         ntree=NTREE,
         nskip=0,
@@ -112,6 +123,8 @@ def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
     assert bart.ndpost == NDPOST
     assert bart.yhat_train.shape == (NDPOST, n)
     assert bart.yhat_train_mean.shape == (n,)
+    # R reports the dropped constant column as a negative rm.const index; the
+    # wrapper turns that into the kept 0-based column indices
     assert_array_equal(bart.rm_const, np.array([0, 2, 3], np.int32))
     assert bart.varcount.shape == (NDPOST, p)
     assert isinstance(bart.sigma_mean, float)
@@ -124,7 +137,7 @@ def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
         assert bart.sigma.shape == (NDPOST * keepevery,)  # one draw per iteration
         assert_array_equal(bart.hostname, np.array([False]))
 
-    yhat = bart.predict(x_train[:, bart.rm_const])
+    yhat = bart.predict(data.x_const[:, bart.rm_const])
     assert yhat.shape == (NDPOST, n)
     assert_close_matrices(yhat.mean(axis=0), bart.yhat_train_mean, rtol=1e-5)
 
@@ -134,18 +147,15 @@ def test_gbart_no_test_data(pkg: ModuleType, data: Data) -> None:
     assert bart.yhat_test_mean is None
 
 
-def fit_gbart_test_data(
-    rng: np.random.Generator, pkg: ModuleType, data: Data, binary: bool
-) -> tuple:
+def fit_gbart_test_data(pkg: ModuleType, data: Data, binary: bool) -> tuple:
     """Fit `gbart` with test data and check the outputs common to both paths."""
-    n, p = data.x.shape
-    x_test = rng.standard_normal((7, p))
-    m, _ = x_test.shape
+    n, _ = data.x.shape
+    m, _ = data.x_test.shape
     kw = dict() if is_BART3(pkg) else dict(hostname=True)  # BART3 dropped hostname
     bart = pkg.gbart(
         x_train=data.x,
         y_train=data.biny if binary else data.y,
-        x_test=x_test,
+        x_test=data.x_test,
         type='pbart' if binary else 'wbart',
         ntree=NTREE,
         nskip=NSKIP,
@@ -157,22 +167,20 @@ def fit_gbart_test_data(
     assert bart.yhat_test.shape == (NDPOST, m)
     assert isinstance(bart.LPML, float)
     if is_BART3(pkg):
-        assert bart.x_test.shape == x_test.shape
+        assert bart.x_test.shape == data.x_test.shape
     else:
         assert bart.hostname.shape == (1,)
         assert bart.hostname.dtype.kind == 'U'  # the fitting machine's hostname
-    return bart, x_test, n, m
+    return bart, n, m
 
 
-def test_gbart_test_data_continuous(
-    rng: np.random.Generator, pkg: ModuleType, data: Data
-) -> None:
+def test_gbart_test_data_continuous(pkg: ModuleType, data: Data) -> None:
     """Passing `x_test` populates the test-set outputs of a `wbart` fit.
 
     `predict` returns the bare draws matrix; BART3 additionally exposes
     posterior quantiles and the prior's `sigest`.
     """
-    bart, x_test, n, m = fit_gbart_test_data(rng, pkg, data, binary=False)
+    bart, n, m = fit_gbart_test_data(pkg, data, binary=False)
     assert bart.yhat_train_mean.shape == (n,)
     assert bart.yhat_test_mean.shape == (m,)
     assert bart.sigma.shape == (NSKIP + NDPOST,)
@@ -186,20 +194,18 @@ def test_gbart_test_data_continuous(
         assert isinstance(bart.sigest, float)
         assert math.isfinite(bart.sigest)
 
-    pred = bart.predict(x_test)
+    pred = bart.predict(data.x_test)
     assert pred.shape == (NDPOST, m)
     assert_close_matrices(pred.mean(axis=0), bart.yhat_test_mean, rtol=1e-5)
 
 
-def test_gbart_test_data_binary(
-    rng: np.random.Generator, pkg: ModuleType, data: Data
-) -> None:
+def test_gbart_test_data_binary(pkg: ModuleType, data: Data) -> None:
     """Passing `x_test` populates the test-set outputs of a `pbart` fit.
 
     The probability-scale `prob_*` outputs replace the derived `yhat_*_mean`
     ones; BART3 additionally exposes posterior quantiles.
     """
-    bart, x_test, n, m = fit_gbart_test_data(rng, pkg, data, binary=True)
+    bart, n, m = fit_gbart_test_data(pkg, data, binary=True)
     assert bart.prob_train.shape == (NDPOST, n)
     assert bart.prob_train_mean.shape == (n,)
     assert bart.prob_test.shape == (NDPOST, m)
@@ -216,7 +222,7 @@ def test_gbart_test_data_binary(
 
     # R's predict for binary fits returns a list; the wrapper exposes it as
     # a dict of arrays (continuous fits return a bare matrix instead).
-    pred = bart.predict(x_test)
+    pred = bart.predict(data.x_test)
     assert isinstance(pred, dict)
     expected_keys = ['binaryOffset', 'prob_test', 'prob_test_mean', 'yhat_test']
     if is_BART3(pkg):
@@ -280,7 +286,7 @@ def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
 
 
 @pytest.mark.timeout(180)
-def test_mc_gbart_binary(rng: np.random.Generator, data: Data) -> None:
+def test_mc_gbart_binary(data: Data) -> None:
     """`mc.gbart` with binary outcomes leaves some outputs uncombined.
 
     R combines `yhat_*` across the chains but forgets `prob_*`, which keep the
@@ -291,17 +297,14 @@ def test_mc_gbart_binary(rng: np.random.Generator, data: Data) -> None:
     test is not shared with BART3.
     """
     BART = import_or_skip('rbartpackages.BART')
-    n, p = data.x.shape
-    x_test = rng.standard_normal((7, p))
-    m, _ = x_test.shape
-    x_train = np.insert(data.x, 1, 1.0, axis=1)
-    x_test = np.insert(x_test, 1, 1.0, axis=1)
+    n, _ = data.x.shape
+    m, _ = data.x_test.shape
 
     mc_cores = 2
     bart = BART.mc_gbart(
-        x_train=x_train,
+        x_train=data.x_const,
         y_train=data.biny,
-        x_test=x_test,
+        x_test=data.x_test_const,
         type='pbart',
         ntree=NTREE,
         nskip=NSKIP,
@@ -320,7 +323,7 @@ def test_mc_gbart_binary(rng: np.random.Generator, data: Data) -> None:
     assert bart.sigma is None
     assert bart.yhat_test_mean is None  # R sets prob.test.mean instead
 
-    pred = bart.predict(x_test[:, bart.rm_const])
+    pred = bart.predict(data.x_test_const[:, bart.rm_const])
     assert pred['yhat_test'].shape == (chain_ndpost, m)  # broken trees header
 
 
