@@ -43,8 +43,8 @@ dependencies = [
 [project.optional-dependencies]
 # Each extra backs a soft-imported converter in `rbartpackages._base`.
 jax = ["jax>=0.6.1"]
-pandas = ["pandas>=2.2.0"]
-polars = ["polars>=1.30.0", "pandas>=2.2.0"]
+pandas = ["pandas>=2.2.3"]
+polars = ["polars>=1.30.0", "pandas>=2.2.3"]
 
 [project.urls]
 Homepage = "https://github.com/bartz-org/rbartpackages"
@@ -53,14 +53,14 @@ Issues = "https://github.com/bartz-org/rbartpackages/issues"
 
 [dependency-groups]
 dev = [
-    "ipython>=8.36.0",
+    "ipython>=8.37.0",
     "pre-commit>=4.2.0",
     "rich>=14.0.0",
     "virtualenv>=20.31.2",
     "asv>=0.6.4",
     "gitpython>=3.1.44",
     "packaging>=25.0",
-    "pytest>=8.3.5",
+    "pytest>=8.4.0",
     "pytest-cov>=6.1.1",
     # WORKAROUND(pytest<9): pytest 9 has built-in subtests support
     "pytest-subtests>=0.14.1",
@@ -71,7 +71,7 @@ dev = [
     "tomli>=2.2.1",
     "myst-nb>=1.2.0",
     "jupyterlab>=4.4.3",
-    "diff-cover>=9.3.1",
+    "diff-cover>=9.3.2",
     # the soft-imported converters, so they are exercised by the test suite
     "jax>=0.6.1",
     "polars[pandas,pyarrow]>=1.30.0",
