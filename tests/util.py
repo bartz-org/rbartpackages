@@ -45,6 +45,7 @@ def import_or_skip(module_name: str) -> ModuleType:
     package (or R itself, or Java for ``bartMachine``) is unavailable. Treat any
     such failure as a skip rather than an error.
     """
+    assert module_name.startswith('rbartpackages.'), module_name
     try:
         return import_module(module_name)
     except Exception as exc:  # noqa: BLE001

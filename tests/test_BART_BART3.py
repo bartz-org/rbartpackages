@@ -35,11 +35,10 @@ import math
 from types import ModuleType
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from tests.util import assert_array_equal, assert_close_matrices, import_or_skip
-
-pd = import_or_skip('pandas')
 
 NDPOST = 20
 NSKIP = 20

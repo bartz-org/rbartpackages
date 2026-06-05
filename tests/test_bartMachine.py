@@ -25,11 +25,11 @@
 """Tests for the bartMachine wrapper (needs R bartMachine + Java)."""
 
 import numpy as np
+import pandas as pd
 
 from tests.util import import_or_skip
 
 bartmachine = import_or_skip('rbartpackages.bartMachine')
-pd = import_or_skip('pandas')
 
 NTREE = 10
 NBURN = 20
