@@ -394,6 +394,9 @@ def test_dbarts(data: Data) -> None:
     assert out['varcount'].shape == (p, NDPOST)
     assert out['test'] is None  # no test data given
 
+    # a burn-in-only run keeps zero samples: invisible NULL, exposed as None
+    assert sampler.run(NSKIP, 0) is None
+
     # without keepTrees, the current trees give a single prediction per point
     pred = sampler.predict(data.x_test)
     assert pred.shape == (m,)

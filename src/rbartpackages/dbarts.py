@@ -176,7 +176,7 @@ class dbarts(RObjectBase):
         is run for zero samples.
         """
         out = self._run(*args, **kw)
-        if not hasattr(out, 'items'):
+        if out is robjects.NULL:
             return None  # R returns invisible NULL for zero samples
         return {
             str(it.name): None if it.value is robjects.NULL else it.value
