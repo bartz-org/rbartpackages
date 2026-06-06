@@ -25,11 +25,52 @@
 """Tests for the shared wrapper plumbing in `rbartpackages._base`."""
 
 import ctypes
+from functools import partial
 from types import SimpleNamespace
 
 import pytest
+from rpy2 import robjects
 
 from rbartpackages import _base
+from tests.util import assert_allclose
+
+
+def stats4_loaded() -> bool:
+    """Whether the R namespace stats4 is loaded."""
+    return bool(robjects.r('isNamespaceLoaded("stats4")')[0])
+
+
+def test_rfunction() -> None:
+    """`rfunction` loads the R package at decoration time and converts arguments."""
+    # stats4 ships with R, but neither R nor the wrapped packages load it:
+    # the decoration must do it
+    assert not stats4_loaded()
+
+    @partial(_base.rfunction, library='stats4', rname='mle')
+    def mle(minuslogl: object, **kw: object) -> object:
+        """Maximum likelihood estimation; returns an S4 object."""
+        ...
+
+    @partial(_base.rfunction, library='stats4', rname='coef')
+    def coef(fit: object) -> object:
+        """Estimated parameters of a fit."""
+        ...
+
+    assert stats4_loaded()
+
+    fit = mle(robjects.r('function(m) (m - 3) ^ 2'), start={'m': 0.0})
+    assert_allclose(coef(fit).item(), 3.0, rtol=1e-4)
+
+
+def test_rfunction_invalid_names() -> None:
+    """Invalid R names are rejected eagerly, at decoration time."""
+
+    def stub() -> object: ...
+
+    with pytest.raises(ValueError, match='Invalid R package name'):
+        _base.rfunction(stub, library='not-a-package')
+    with pytest.raises(ValueError, match='Invalid R function name'):
+        _base.rfunction(stub, library='base', rname='not a function')
 
 
 def test_doc_pulled_from_r_when_missing() -> None:

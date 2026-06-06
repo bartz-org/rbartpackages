@@ -184,21 +184,25 @@ class RObjectBase:
     )
     _convctx = conversion.localconverter(_converter)
 
-    def _py2r(self, x: object) -> object:
+    @classmethod
+    def _py2r(cls, x: object) -> object:
         if isinstance(x, __class__):
             return x._robject  # noqa: SLF001, same-class access
-        with self._convctx:
-            return self._converter.py2rpy(x)
+        with cls._convctx:
+            return cls._converter.py2rpy(x)
 
-    def _r2py(self, x: object) -> object:
-        with self._convctx:
-            return self._converter.rpy2py(x)
+    @classmethod
+    def _r2py(cls, x: object) -> object:
+        with cls._convctx:
+            return cls._converter.rpy2py(x)
 
-    def _args2r(self, args: Iterable[Any]) -> tuple[Any, ...]:
-        return tuple(map(self._py2r, args))
+    @classmethod
+    def _args2r(cls, args: Iterable[Any]) -> tuple[Any, ...]:
+        return tuple(map(cls._py2r, args))
 
-    def _kw2r(self, kw: Mapping[str, Any]) -> dict[str, Any]:
-        return {key: self._py2r(value) for key, value in kw.items()}
+    @classmethod
+    def _kw2r(cls, kw: Mapping[str, Any]) -> dict[str, Any]:
+        return {key: cls._py2r(value) for key, value in kw.items()}
 
     _rfuncname: str = NotImplemented
 
@@ -313,5 +317,56 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
             out = func(self._robject, *self._args2r(args), **self._kw2r(kw))
 
         return self._r2py(out)
+
+    return impl
+
+
+def rfunction(func: Callable, *, library: str, rname: str | None = None) -> Callable:
+    """Automatically implement a function using the corresponding R function.
+
+    Parameters
+    ----------
+    func
+        A function. Its original implementation is completely discarded.
+    library
+        The R package the function is fetched from. The fetch is eager: it
+        happens at decoration time and loads the package namespace.
+    rname
+        The name of the function in R. If not specified, use the name of
+        `func`.
+
+    Returns
+    -------
+    funcimpl
+        An implementation that calls the R function on the converted
+        arguments; `RObjectBase` instances are passed as their wrapped R
+        objects.
+
+    Raises
+    ------
+    ValueError
+        If `library` or `rname` is not a valid R identifier.
+
+    Examples
+    --------
+    >>> @partial(rfunction, library='mypackage', rname='my.function')
+    ... def my_function(obj: MyRObject, arg1: int, arg2: str):
+    ...     ...
+    """
+    if rname is None:
+        rname = func.__name__
+    if not fullmatch(R_IDENTIFIER, library):
+        msg = f'Invalid R package name: {library}'
+        raise ValueError(msg)
+    if not fullmatch(R_IDENTIFIER, rname):
+        msg = f'Invalid R function name: {rname}'
+        raise ValueError(msg)
+    robjects.r(f'loadNamespace("{library}")')
+    rfunc = robjects.r(f'{library}::{rname}')
+
+    @wraps(func)
+    def impl(*args: Any, **kw: Any) -> object:
+        out = rfunc(*RObjectBase._args2r(args), **RObjectBase._kw2r(kw))  # noqa: SLF001, base-class access
+        return RObjectBase._r2py(out)  # noqa: SLF001, base-class access
 
     return impl
