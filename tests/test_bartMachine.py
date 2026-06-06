@@ -104,9 +104,11 @@ def test_docstring() -> None:
 def test_num_cores() -> None:
     """The thread count round-trips through the package-global setting."""
     initial = bartMachine.bart_machine_num_cores()
-    bartMachine.set_bart_machine_num_cores(2)
-    assert bartMachine.bart_machine_num_cores() == 2
-    bartMachine.set_bart_machine_num_cores(initial)
+    try:
+        bartMachine.set_bart_machine_num_cores(2)
+        assert bartMachine.bart_machine_num_cores() == 2
+    finally:
+        bartMachine.set_bart_machine_num_cores(initial)
     assert bartMachine.bart_machine_num_cores() == initial
 
 
