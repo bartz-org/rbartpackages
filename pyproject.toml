@@ -39,6 +39,8 @@ dependencies = [
     "rpy2>=3.6.0",
     "numpy>=2.2.6",
     "jaxtyping>=0.3.2",
+    # WORKAROUND(python<3.11): backports NotRequired and Self
+    "typing-extensions>=4.14.0",
 ]
 
 [project.optional-dependencies]
@@ -233,6 +235,7 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
+property-decorators = ["rbartpackages._base.rproperty"]
 
 [tool.ruff.lint.flake8-copyright]
 min-file-size = 1
