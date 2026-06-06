@@ -24,10 +24,8 @@
 
 """Wrapper for the R package BART."""
 
-# ruff: noqa: ANN002, ANN003
-
 from functools import partial
-from typing import Literal, NamedTuple, TypedDict, cast
+from typing import Any, Literal, NamedTuple, TypedDict, cast
 
 import numpy as np
 from jaxtyping import AbstractDtype, Bool, Float64, Int32, Integer
@@ -441,7 +439,7 @@ class mc_gbart(RObjectBase):
         }
 
     @partial(rmethod, rname='predict')
-    def _predict(self, newdata: Float64[ndarray, 'm p'], *args, **kwargs) -> object:
+    def _predict(self, newdata: Float64[ndarray, 'm p'], **kwargs: Any) -> object:
         """Call R's `predict`; returns a matrix (continuous) or a list (binary)."""
         ...
 
