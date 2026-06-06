@@ -30,3 +30,4 @@ Guide
 
     installation.rst
     quickstart.rst
+    custom-wrapper.rst
