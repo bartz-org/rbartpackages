@@ -39,6 +39,7 @@ import pandas as pd
 import pytest
 from jaxtyping import Float64
 from numpy import ndarray
+from rpy2.rinterface_lib.embedded import RRuntimeError
 
 from rbartpackages import BART, BART3
 from tests.util import assert_array_equal, assert_close_matrices
@@ -239,60 +240,62 @@ def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
 
 
 def test_explicit_signature(pkg: ModuleType, data: Data) -> None:
-    """BART3's explicit `__init__` forwards its arguments to R faithfully.
+    """The explicit `__init__` forwards its arguments to R faithfully.
 
-    The leading arguments work positionally, `lambda_` reaches R's ``lambda``
-    (here fixing the error SD at `sigest`), the `probs` tuple sets the summary
-    quantiles, and arguments outside the signature are rejected instead of
-    being forwarded to R. BART keeps the generic pass-through interface, so
-    the test skips on it.
+    The leading arguments work positionally, `offset` overrides the data
+    centering, `lambda_` reaches R's ``lambda`` (here fixing the error SD at
+    `sigest`, which leaves no sigma draws: BART3 handles that, BART crashes
+    summarizing them), the BART3-only `probs` tuple sets the summary
+    quantiles, and arguments outside the signature (each package rejecting an
+    extra of the other) are rejected instead of being forwarded to R.
     """
+    offset = 1.5
+    common = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST)
+    bart = pkg.gbart(data.x, data.y, data.x_test, offset=offset, **common)
+    assert bart.offset == offset
+
     if pkg is BART:
-        pytest.skip('BART keeps the generic *args/**kw interface')
-    probs = 0.25, 0.75
-    bart = pkg.gbart(
-        data.x,
-        data.y,
-        data.x_test,
-        lambda_=0.0,
-        sigest=1.0,
-        ntree=NTREE,
-        nskip=NSKIP,
-        ndpost=NDPOST,
-        probs=probs,
-    )
-    # lambda=0 means the error SD is fixed and known at sigest: R returns no
-    # sigma draws and falls back to sigest for sigma_mean
-    assert bart.sigma is None
-    assert bart.sigma_ is None
-    assert bart.sigma_mean == 1.0
-    # R's default quantile algorithm matches numpy's default interpolation
-    assert_close_matrices(
-        bart.yhat_test_lower,
-        np.quantile(bart.yhat_test, probs[0], axis=0),
-        rtol=1e-8,
-        atol=1e-8,
-    )
-    assert_close_matrices(
-        bart.yhat_test_upper,
-        np.quantile(bart.yhat_test, probs[1], axis=0),
-        rtol=1e-8,
-        atol=1e-8,
-    )
-    with pytest.raises(TypeError, match='unexpected keyword'):
-        pkg.gbart(data.x, data.y, hostname=True)
+        # lambda=0 fixes the error SD at sigest, so cgbart returns no sigma
+        # draws, and R's postprocessing chokes on the missing vector
+        with pytest.raises(RRuntimeError, match='must be of a vector type'):
+            pkg.gbart(data.x, data.y, lambda_=0.0, sigest=1.0, **common)
+        with pytest.raises(TypeError, match='unexpected keyword'):
+            pkg.gbart(data.x, data.y, probs=(0.25, 0.75))  # BART3 extra
+    else:
+        probs = 0.25, 0.75
+        bart = pkg.gbart(
+            data.x, data.y, data.x_test, lambda_=0.0, sigest=1.0, probs=probs, **common
+        )
+        # lambda=0 means the error SD is fixed and known at sigest: R returns
+        # no sigma draws and falls back to sigest for sigma_mean
+        assert bart.sigma is None
+        assert bart.sigma_ is None
+        assert bart.sigma_mean == 1.0
+        # R's default quantile algorithm matches numpy's default interpolation
+        assert_close_matrices(
+            bart.yhat_test_lower,
+            np.quantile(bart.yhat_test, probs[0], axis=0),
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        assert_close_matrices(
+            bart.yhat_test_upper,
+            np.quantile(bart.yhat_test, probs[1], axis=0),
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        with pytest.raises(TypeError, match='unexpected keyword'):
+            pkg.gbart(data.x, data.y, hostname=True)  # BART extra
 
 
 def test_predict_explicit_signature(pkg: ModuleType, data: Data) -> None:
-    """BART3's explicit `predict` forwards its arguments to R faithfully.
+    """The explicit `predict` forwards its arguments to R faithfully.
 
     ``dodraws=False`` returns the mean of the draws on a continuous fit, the
-    `probs` tuple sets the quantile summaries of a binary fit, and arguments
-    outside the signature are rejected instead of being forwarded to R. BART
-    keeps the generic pass-through interface, so the test skips on it.
+    BART3-only `probs` tuple sets the quantile summaries of a binary fit, and
+    arguments outside the signature are rejected instead of being forwarded
+    to R.
     """
-    if pkg is BART:
-        pytest.skip('BART keeps the generic *args/**kw interface')
     m, _ = data.x_test.shape
 
     # continuous fit: dodraws=False returns the mean of the draws
@@ -304,23 +307,29 @@ def test_predict_explicit_signature(pkg: ModuleType, data: Data) -> None:
     with pytest.raises(TypeError, match='unexpected keyword'):
         bart.predict(data.x_test, transposed=True)
 
-    # binary fit: probs sets the reported quantiles of the probability draws
-    probs = 0.25, 0.75
-    bart = pkg.gbart(
-        data.x, data.biny, type='pbart', ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
-    )
-    pred = bart.predict(data.x_test, probs=probs)
-    # R's default quantile algorithm matches numpy's default interpolation
-    assert_close_matrices(
-        pred['prob_test_lower'],
-        np.quantile(pred['prob_test'], probs[0], axis=0),
-        rtol=1e-8,
-    )
-    assert_close_matrices(
-        pred['prob_test_upper'],
-        np.quantile(pred['prob_test'], probs[1], axis=0),
-        rtol=1e-8,
-    )
+    if pkg is BART:
+        # mu would duplicate the value R's method passes on its own
+        with pytest.raises(TypeError, match='unexpected keyword'):
+            bart.predict(data.x_test, mu=0.0)
+    else:
+        # binary fit: probs sets the reported quantiles of the probability
+        # draws
+        probs = 0.25, 0.75
+        bart = pkg.gbart(
+            data.x, data.biny, type='pbart', ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
+        )
+        pred = bart.predict(data.x_test, probs=probs)
+        # R's default quantile algorithm matches numpy's default interpolation
+        assert_close_matrices(
+            pred['prob_test_lower'],
+            np.quantile(pred['prob_test'], probs[0], axis=0),
+            rtol=1e-8,
+        )
+        assert_close_matrices(
+            pred['prob_test_upper'],
+            np.quantile(pred['prob_test'], probs[1], axis=0),
+            rtol=1e-8,
+        )
 
 
 @pytest.mark.timeout(180)
@@ -368,8 +377,7 @@ def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
 
     # predict with mc_cores > 1 forks via mc.pwbart; unlike mc.gbart's fork the
     # children run single-threaded, so this stays deadlock-free without a guard.
-    kw = {'mc.cores': mc_cores} if pkg is BART else dict(mc_cores=mc_cores)
-    yhat = bart.predict(data.x, **kw)
+    yhat = bart.predict(data.x, mc_cores=mc_cores)
     assert yhat.shape == (bart.ndpost, n)
 
 
