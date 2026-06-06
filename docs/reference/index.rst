@@ -41,6 +41,7 @@ Wrapped packages
     rbartpackages.BART3
     rbartpackages.bartMachine
     rbartpackages.dbarts
+    rbartpackages.missBART
 
 Base machinery
 --------------

@@ -43,7 +43,8 @@ replaced by ``_``).
 
 Argument names use Python underscores in place of R dots: pass ``x_train`` for
 the R argument ``x.train``. The same pattern works for the other wrappers, e.g.
-`rbartpackages.BART`, `rbartpackages.dbarts`, and `rbartpackages.bartMachine`.
+`rbartpackages.BART`, `rbartpackages.dbarts`, `rbartpackages.bartMachine`, and
+`rbartpackages.missBART`.
 
 Data frames and other array types
 ---------------------------------

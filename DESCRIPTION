@@ -1,11 +1,14 @@
 Type: Project
 Description: R dependencies for the rbartpackages Python project. rbartpackages
     wraps these R BART packages via rpy2; this file lets renv discover and
-    install them (including BART3, which is not on CRAN) without dummy R scripts.
+    install them (including BART3 and missBART, which are not on CRAN) without
+    dummy R scripts.
 Imports:
     BART,
     BART3,
     bartMachine,
-    dbarts
+    dbarts,
+    missBART
 Remotes:
-    rsparapa/bnptools/BART3
+    rsparapa/bnptools/BART3,
+    yongchengoh/missBART
