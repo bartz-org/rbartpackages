@@ -109,8 +109,8 @@ class DataFrame(Protocol):
     to R data frames, with categorical columns becoming factors.
     """
 
-    def __dataframe__(self) -> object:
-        """Convert to a dataframe-interchange-protocol object."""
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
+        """Export as an Arrow PyCapsule stream."""
 
 
 R_IDENTIFIER = r'(?:[a-zA-Z]|\.(?![0-9]))[a-zA-Z0-9._]*'
