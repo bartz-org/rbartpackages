@@ -283,6 +283,46 @@ def test_explicit_signature(pkg: ModuleType, data: Data) -> None:
         pkg.gbart(data.x, data.y, hostname=True)
 
 
+def test_predict_explicit_signature(pkg: ModuleType, data: Data) -> None:
+    """BART3's explicit `predict` forwards its arguments to R faithfully.
+
+    ``dodraws=False`` returns the mean of the draws on a continuous fit, the
+    `probs` tuple sets the quantile summaries of a binary fit, and arguments
+    outside the signature are rejected instead of being forwarded to R. BART
+    keeps the generic pass-through interface, so the test skips on it.
+    """
+    if pkg is BART:
+        pytest.skip('BART keeps the generic *args/**kw interface')
+    m, _ = data.x_test.shape
+
+    # continuous fit: dodraws=False returns the mean of the draws
+    bart = pkg.gbart(data.x, data.y, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST)
+    draws = bart.predict(data.x_test)
+    mean = bart.predict(data.x_test, dodraws=False)
+    assert mean.shape == (m,)
+    assert_close_matrices(mean, draws.mean(axis=0), rtol=1e-8)
+    with pytest.raises(TypeError, match='unexpected keyword'):
+        bart.predict(data.x_test, transposed=True)
+
+    # binary fit: probs sets the reported quantiles of the probability draws
+    probs = 0.25, 0.75
+    bart = pkg.gbart(
+        data.x, data.biny, type='pbart', ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
+    )
+    pred = bart.predict(data.x_test, probs=probs)
+    # R's default quantile algorithm matches numpy's default interpolation
+    assert_close_matrices(
+        pred['prob_test_lower'],
+        np.quantile(pred['prob_test'], probs[0], axis=0),
+        rtol=1e-8,
+    )
+    assert_close_matrices(
+        pred['prob_test_upper'],
+        np.quantile(pred['prob_test'], probs[1], axis=0),
+        rtol=1e-8,
+    )
+
+
 @pytest.mark.timeout(180)
 def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
     """`mc.gbart` with ``mc_cores > 1`` runs without deadlocking.
@@ -328,7 +368,8 @@ def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
 
     # predict with mc_cores > 1 forks via mc.pwbart; unlike mc.gbart's fork the
     # children run single-threaded, so this stays deadlock-free without a guard.
-    yhat = bart.predict(data.x, **{'mc.cores': mc_cores})
+    kw = {'mc.cores': mc_cores} if pkg is BART else dict(mc_cores=mc_cores)
+    yhat = bart.predict(data.x, **kw)
     assert yhat.shape == (bart.ndpost, n)
 
 

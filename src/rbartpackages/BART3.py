@@ -534,17 +534,90 @@ class mc_gbart(RObjectBase):
         ...
 
     def predict(
-        self, newdata: Float64[ndarray, 'm p'], *args, **kwargs
-    ) -> Float64[ndarray, 'ndpost m'] | PredictBinary:
-        """Compute predictions.
-
-        For continuous (`wbart`) fits this is the matrix of posterior
-        latent-function draws. For binary (`pbart`/`lbart`) fits R returns a
-        list, exposed here as a `PredictBinary` dict.
+        self,
+        newdata: Float64[ndarray, 'm p'] | DataFrame,
+        *,
+        mc_cores: int | None = None,
+        openmp: bool | None = None,
+        mult_impute: int | None = None,
+        seed: int | None = None,
+        mu: float | None = None,
+        probs: tuple[float, float] | None = None,
+        dodraws: bool | None = None,
+        nice: int | None = None,
+    ) -> Float64[ndarray, 'ndpost m'] | Float64[ndarray, ' m'] | PredictBinary:
         """
-        out = self._predict(newdata, *args, **kwargs)
+        Compute predictions at new covariate points.
+
+        Python interface to R's ``predict`` method for the fit, dispatched
+        on the fit `type`. For continuous ('wbart') fits the result is the
+        matrix of posterior latent-function draws (their mean with
+        ``dodraws=False``); for binary ('pbart'/'lbart') fits R returns a
+        list, exposed here as a `PredictBinary` dict. Arguments left to
+        ``None`` are omitted from the R call, so R computes its own
+        defaults, described below; R rejects the arguments marked for
+        specific fit types when used with the others.
+
+        Parameters
+        ----------
+        newdata
+            Covariates to predict at; rows are observations, with one
+            column per kept `x_train` column (see `rm_const`). A
+            dataframe's factor columns are expanded into indicator
+            columns.
+        mc_cores
+            Number of OpenMP threads or forked R processes (see `openmp`)
+            computing the predictions; default R's ``mc.cores`` option,
+            or 1.
+        openmp
+            Whether `mc_cores` counts OpenMP threads rather than forked R
+            processes; default whether BART3 was compiled with OpenMP.
+        mult_impute
+            Number of hot-deck imputations averaged over when `newdata`
+            has missing values; default 4. Not accepted by 'lbart' fits.
+        seed
+            Seed set in R before imputing missing values (default 99).
+            'wbart' fits only ('pbart' accepts but ignores it).
+        mu
+            Value added to the function draws in place of the fit's
+            `offset`. 'wbart' fits only.
+        probs
+            Lower and upper quantiles of the ``prob_test_lower``/``_upper``
+            summaries; default ``(0.025, 0.975)``. Binary fits only.
+        dodraws
+            Whether to return the posterior draws (the default) rather
+            than only their mean. 'wbart' fits only.
+        nice
+            Unix niceness of the forked processes, from 0 (highest
+            priority) to 19 (lowest, the default); ignored unless forking.
+
+        Returns
+        -------
+        pred : Float64[ndarray, 'ndpost m'] | Float64[ndarray, ' m'] | PredictBinary
+            The function draws at `newdata` for continuous fits (their mean with ``dodraws=False``), or a `PredictBinary` dict for binary fits.
+
+        Notes
+        -----
+        The R arguments ``cutpoints`` and ``trees`` (fallbacks for fits
+        missing `treedraws`, which `gbart` fits always carry) and
+        ``transposed`` (a pre-transposed `newdata` cannot pass the
+        method's own column-count check) are not exposed.
+        """
+        kw = {
+            'mc.cores': mc_cores,
+            'openmp': openmp,
+            'mult.impute': mult_impute,
+            'seed': seed,
+            'mu': mu,
+            'probs': None if probs is None else np.asarray(probs),
+            'dodraws': dodraws,
+            'nice': nice,
+        }
+        # drop the arguments left to None to let R compute its defaults
+        kw = {name: value for name, value in kw.items() if value is not None}
+        out = self._predict(newdata, **kw)
         if not hasattr(out, 'items'):
-            return out  # continuous: already a matrix
+            return out  # continuous: a draws matrix or its column means
 
         # binary: convert R's list (a NamedList) to a dict of arrays
         out = cast(NamedList, out)
