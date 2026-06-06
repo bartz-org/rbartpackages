@@ -32,11 +32,13 @@ from typing import Any
 from jaxtyping import AbstractDtype, Float64, Int32
 from numpy import ndarray
 from rpy2 import robjects
+from rpy2.rlike.container import NamedList
+from rpy2.robjects.methods import RS4
 
 # WORKAROUND(python<3.11): import NotRequired, Self, TypedDict from typing
 from typing_extensions import NotRequired, Self, TypedDict
 
-from rbartpackages._base import RObjectBase, rmethod
+from rbartpackages._base import RObjectBase, rmethod, rproperty
 
 
 class String(AbstractDtype):
@@ -280,7 +282,8 @@ class dbarts(RObjectBase):
     Python.
 
     The sampler is a mutable R object: the methods below modify it in place
-    or return results; no components are exposed as attributes.
+    or return results. Its fields are exposed as read-only properties that
+    read off the R object at each access, so they track the in-place updates.
     """
 
     _rfuncname = 'dbarts::dbarts'
@@ -289,6 +292,26 @@ class dbarts(RObjectBase):
     def __init__(self, *args, **kw) -> None:
         args, kw = formula_arg(args, kw)
         super().__init__(*args, **named_vector_args(kw, self._named_vectors))
+
+    @rproperty
+    def control(self) -> RS4:
+        """The control object of the sampler (an R `dbartsControl`)."""
+        ...
+
+    @rproperty
+    def data(self) -> RS4:
+        """The data object of the sampler (an R `dbartsData`)."""
+        ...
+
+    @rproperty
+    def model(self) -> RS4:
+        """The model (priors) object of the sampler (an R `dbartsModel`)."""
+        ...
+
+    @rproperty
+    def state(self) -> NamedList | None:
+        """The per-chain sampler states; ``None`` unless cached with ``updateState``."""
+        ...
 
     @partial(rmethod, rname='run')
     def _run(self, *args, **kw) -> object:

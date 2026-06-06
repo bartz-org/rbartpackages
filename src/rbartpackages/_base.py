@@ -291,3 +291,45 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
         return self._r2py(out)
 
     return impl
+
+
+def rproperty(meth: Callable, *, rname: str | None = None) -> property:
+    """Automatically implement a read-only property using the corresponding R field.
+
+    Unlike the attributes snapshotted by `RObjectBase.__init__`, the field is
+    extracted from the R object at each access, so it tracks mutable objects
+    such as reference-class instances.
+
+    Parameters
+    ----------
+    meth
+        A method in a subclass of `RObjectBase`. The original implementation
+        is completely discarded.
+    rname
+        The name of the field in R. If not specified, use the name of `meth`.
+
+    Returns
+    -------
+    prop
+        A read-only property that extracts the field with R's ``$`` operator. NULL fields are exposed as ``None``.
+
+    Examples
+    --------
+    >>> class MyRObject(RObjectBase):
+    ...     _rfuncname = 'mypackage::myfunction'
+    ...     @partial(rproperty, rname='my.field')
+    ...     def my_field(self):
+    ...         ...
+    """
+    if rname is None:
+        rname = meth.__name__
+
+    @wraps(meth)
+    def impl(self: RObjectBase) -> object:
+        out = robjects.r['$'](self._robject, rname)
+        if out is robjects.NULL:
+            return None
+        else:
+            return self._r2py(out)
+
+    return property(impl)

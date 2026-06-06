@@ -348,7 +348,8 @@ def test_dbarts(data: Data) -> None:
 
     Draws come back as a dict of arrays with the observations on the first
     axis. A copy of the sampler (possible only without cached state) runs
-    independently, and the sampler can be modified in place.
+    independently, and the sampler can be modified in place, with the field
+    properties tracking the updates.
     """
     n, p = data.x.shape
     m, _ = data.x_test.shape
@@ -385,19 +386,33 @@ def test_dbarts(data: Data) -> None:
     sampler.sampleTreesFromPrior()
     sampler.sampleNodeParametersFromPrior()
 
+    # the field properties read off the live R object: setResponse shows
+    # through data, and the state is never cached with updateState=False
+    assert sampler.model.rclass[0] == 'dbartsModel'
+    assert sampler.control.rclass[0] == 'dbartsControl'
+    assert sampler.state is None
+
     # replacing the response redirects the fit
     sampler.setResponse(-data.y)
+    assert_array_equal(np.asarray(robjects.r('function(d) d@y')(sampler.data)), -data.y)
     out3 = sampler.run(NSKIP, NDPOST)
     assert_close_matrices(out3['train'].mean(axis=1), -data.y, rtol=0.5)
 
 
 def test_dbarts_test_data(data: Data) -> None:
-    """The sampler also takes bare matrices and returns test-point draws."""
+    """The sampler also takes bare matrices and returns test-point draws.
+
+    With the default ``updateState``, running the sampler caches the state,
+    readable through the `state` property.
+    """
     m, _ = data.x_test.shape
     control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
     sampler = dbarts.dbarts(data.x, data.y, test=data.x_test, control=control)
     out = sampler.run(NSKIP, NDPOST)
     assert out['test'].shape == (m, NDPOST)
+
+    (item,) = sampler.state.items()  # one state per chain
+    assert item.value.rclass[0] == 'dbartsState'
 
 
 def test_dbarts_setters(data: Data) -> None:
@@ -444,7 +459,7 @@ def test_dbarts_setters(data: Data) -> None:
     # the model (priors) can be grafted from another sampler, as the
     # dbartsModel constructor is not exported
     other = dbarts.dbarts(data.x, data.y, control=control)
-    sampler.setModel(robjects.r['$'](other._robject, 'model'))
+    sampler.setModel(other.model)
 
     # a dbartsData replaces the training data (and drops the test data)
     sampler.setData(dbarts.dbartsData('y ~ x1 + x2 + x3', data.frame.iloc[: n // 2]))
