@@ -113,6 +113,22 @@ class DataFrame(Protocol):
         """Export as an Arrow PyCapsule stream."""
 
 
+def drop_none(kw: dict[str, Any]) -> dict[str, Any]:
+    """Drop the arguments left to ``None`` to let R compute its defaults.
+
+    Parameters
+    ----------
+    kw
+        Arguments of an R function, by name.
+
+    Returns
+    -------
+    kw : dict[str, Any]
+        The arguments whose value is not ``None``.
+    """
+    return {name: value for name, value in kw.items() if value is not None}
+
+
 R_IDENTIFIER = r'(?:[a-zA-Z]|\.(?![0-9]))[a-zA-Z0-9._]*'
 
 # In-process native thread pools to cap before R forks. R's

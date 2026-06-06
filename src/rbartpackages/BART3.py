@@ -36,6 +36,7 @@ from rpy2.rlike.container import NamedList
 from rbartpackages._base import (
     DataFrame,
     RObjectBase,
+    drop_none,
     fork_safe_native_threads,
     rmethod,
 )
@@ -475,13 +476,10 @@ class mc_gbart(RObjectBase):
             'shards': shards,
             'weight': weight,
         }
-        # drop the arguments left to None to let R compute its defaults
-        kw = {name: value for name, value in kw.items() if value is not None}
-
         # mc.gbart forks via parallel::mcparallel; cap native thread pools at one
         # thread across the fork to avoid a libgomp deadlock in the children.
         with fork_safe_native_threads():
-            super().__init__(**kw)
+            super().__init__(**drop_none(kw))
 
         # fix up attributes
         self.chains = self.chains.item()
@@ -611,9 +609,7 @@ class mc_gbart(RObjectBase):
             'dodraws': dodraws,
             'nice': nice,
         }
-        # drop the arguments left to None to let R compute its defaults
-        kw = {name: value for name, value in kw.items() if value is not None}
-        out = self._predict(newdata, **kw)
+        out = self._predict(newdata, **drop_none(kw))
         if not hasattr(out, 'items'):
             return out  # continuous: a draws matrix or its column means
 
@@ -701,10 +697,8 @@ class bartModelMatrix(RObjectBase):
             'cont': cont,
             'xinfo': xinfo,
         }
-        # drop the arguments left to None to let R compute its defaults
-        kw = {name: value for name, value in kw.items() if value is not None}
         self = super().__new__(cls)
-        self._robject = self._invoke_rfunc((), kw)
+        self._robject = self._invoke_rfunc((), drop_none(kw))
         if not self._has_named_components(self._robject):
             return self._r2py(self._robject)
         self._set_attrs_from_robject()
