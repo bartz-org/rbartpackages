@@ -32,6 +32,7 @@ added in BART3). Tests of BART-only behavior skip on BART3.
 
 import math
 from dataclasses import dataclass
+from inspect import Parameter, signature
 from types import ModuleType
 
 import numpy as np
@@ -39,6 +40,8 @@ import pandas as pd
 import pytest
 from jaxtyping import Float64
 from numpy import ndarray
+from rpy2 import robjects
+from rpy2.rinterface_lib.embedded import RRuntimeError
 
 from rbartpackages import BART, BART3
 from tests.util import assert_array_equal, assert_close_matrices
@@ -238,6 +241,207 @@ def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
     check_predict(bart, x_test, binary)
 
 
+def test_explicit_signature(pkg: ModuleType, data: Data) -> None:
+    """The explicit `__init__` forwards its arguments to R faithfully.
+
+    The leading arguments work positionally, `offset` overrides the data
+    centering, `lambda_` reaches R's ``lambda`` (here fixing the error SD at
+    `sigest`, which leaves no sigma draws: BART3 handles that, BART crashes
+    summarizing them), the BART3-only `probs` tuple sets the summary
+    quantiles, and arguments outside the signature (each package rejecting an
+    extra of the other) are rejected instead of being forwarded to R.
+    """
+    offset = 1.5
+    common = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST)
+    bart = pkg.gbart(data.x, data.y, data.x_test, offset=offset, **common)
+    assert bart.offset == offset
+
+    if pkg is BART:
+        # lambda=0 fixes the error SD at sigest, so cgbart returns no sigma
+        # draws, and R's postprocessing chokes on the missing vector
+        with pytest.raises(RRuntimeError, match='must be of a vector type'):
+            pkg.gbart(data.x, data.y, lambda_=0.0, sigest=1.0, **common)
+        with pytest.raises(TypeError, match='unexpected keyword'):
+            pkg.gbart(data.x, data.y, probs=(0.25, 0.75))  # BART3 extra
+    else:
+        probs = 0.25, 0.75
+        bart = pkg.gbart(
+            data.x, data.y, data.x_test, lambda_=0.0, sigest=1.0, probs=probs, **common
+        )
+        # lambda=0 means the error SD is fixed and known at sigest: R returns
+        # no sigma draws and falls back to sigest for sigma_mean
+        assert bart.sigma is None
+        assert bart.sigma_ is None
+        assert bart.sigma_mean == 1.0
+        # R's default quantile algorithm matches numpy's default interpolation
+        assert_close_matrices(
+            bart.yhat_test_lower,
+            np.quantile(bart.yhat_test, probs[0], axis=0),
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        assert_close_matrices(
+            bart.yhat_test_upper,
+            np.quantile(bart.yhat_test, probs[1], axis=0),
+            rtol=1e-8,
+            atol=1e-8,
+        )
+        with pytest.raises(TypeError, match='unexpected keyword'):
+            pkg.gbart(data.x, data.y, hostname=True)  # BART extra
+
+
+def test_predict_explicit_signature(pkg: ModuleType, data: Data) -> None:
+    """The explicit `predict` forwards its arguments to R faithfully.
+
+    ``dodraws=False`` returns the mean of the draws on a continuous fit, the
+    BART3-only `probs` tuple sets the quantile summaries of a binary fit, and
+    arguments outside the signature are rejected instead of being forwarded
+    to R.
+    """
+    m, _ = data.x_test.shape
+
+    # continuous fit: dodraws=False returns the mean of the draws
+    bart = pkg.gbart(data.x, data.y, ntree=NTREE, nskip=NSKIP, ndpost=NDPOST)
+    draws = bart.predict(data.x_test)
+    mean = bart.predict(data.x_test, dodraws=False)
+    assert mean.shape == (m,)
+    assert_close_matrices(mean, draws.mean(axis=0), rtol=1e-8)
+    with pytest.raises(TypeError, match='unexpected keyword'):
+        bart.predict(data.x_test, transposed=True)
+
+    if pkg is BART:
+        # mu would duplicate the value R's method passes on its own
+        with pytest.raises(TypeError, match='unexpected keyword'):
+            bart.predict(data.x_test, mu=0.0)
+    else:
+        # binary fit: probs sets the reported quantiles of the probability
+        # draws
+        probs = 0.25, 0.75
+        bart = pkg.gbart(
+            data.x, data.biny, type='pbart', ntree=NTREE, nskip=NSKIP, ndpost=NDPOST
+        )
+        pred = bart.predict(data.x_test, probs=probs)
+        # R's default quantile algorithm matches numpy's default interpolation
+        assert_close_matrices(
+            pred['prob_test_lower'],
+            np.quantile(pred['prob_test'], probs[0], axis=0),
+            rtol=1e-8,
+        )
+        assert_close_matrices(
+            pred['prob_test_upper'],
+            np.quantile(pred['prob_test'], probs[1], axis=0),
+            rtol=1e-8,
+        )
+
+
+def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
+    """Evaluate the argument defaults of an R function in isolation.
+
+    Defaults that are NULL, missing, or that cannot be evaluated standalone
+    (e.g. because they reference other arguments) are omitted.
+    """
+    rdefaults = robjects.r(f"""
+        Filter(
+            Negate(is.null),
+            lapply(
+                formals({rfuncname}),
+                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
+            )
+        )
+    """)
+    return {
+        name: np.asarray(value)
+        for name, value in zip(rdefaults.names, rdefaults, strict=True)
+    }
+
+
+def test_signature_defaults_match_r(pkg: ModuleType) -> None:
+    """The explicit signatures stay in sync with the wrapped R functions.
+
+    Every literal default in a Python signature must match its R counterpart,
+    and every R argument must be either exposed or deliberately unexposed, so
+    that an upstream update that changes a default or adds an argument fails
+    here instead of silently diverging.
+    """
+    # R arguments deliberately left out of the signatures (see the class
+    # docstrings)
+    gbart_unexposed = {'ntype'} if pkg is BART else {'ntype', 'TSVS'}
+    cases = [
+        (pkg.mc_gbart, gbart_unexposed, set()),
+        # gbart shares mc_gbart's signature but ignores mc.cores, whose R
+        # default is 1 rather than mc.gbart's 2
+        (pkg.gbart, gbart_unexposed, {'mc.cores'}),
+        (pkg.bartModelMatrix, set(), set()),
+    ]
+    for cls, unexposed, ignored in cases:
+        rfuncname = cls._rfuncname
+        params = {
+            # the signatures use _ where R uses . and trail it to dodge
+            # python keywords
+            name.removesuffix('_').replace('_', '.'): param
+            for name, param in signature(cls).parameters.items()
+        }
+        rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+        assert params.keys() <= rnames, rfuncname
+        assert rnames - params.keys() == unexposed, rfuncname
+
+        rdefaults = evaluated_r_formals(rfuncname)
+        for name, param in params.items():
+            if param.default is Parameter.empty or param.default is None:
+                continue  # required, or deferred to R
+            if name in ignored:
+                continue  # documented mismatch
+            # a literal Python default needs a comparable R default
+            assert name in rdefaults, f'{rfuncname}, argument {name}'
+            # strict=False: R types its literals loosely (TRUE vs 1, 100L vs
+            # 100), so compare values only
+            assert_array_equal(
+                np.ravel(param.default),
+                np.ravel(rdefaults[name]),
+                strict=False,
+                err_msg=f'{rfuncname}, argument {name}',
+            )
+
+
+def test_predict_signature_matches_r(pkg: ModuleType) -> None:
+    """The explicit `predict` signature stays in sync with the R methods.
+
+    R's `predict` dispatches to one S3 method per fit type, and each method
+    forwards its ``...`` to the `pwbart`/`mc.pwbart` workers: every Python
+    argument must appear in the union of their formals, and every R argument
+    must be either exposed or deliberately unexposed. The R defaults vary
+    between the methods and the workers, so the signature cannot pin them:
+    every argument must defer to R with ``None``.
+    """
+    # R arguments deliberately left out of the signature (see the notes in
+    # the predict docstrings)
+    unexposed = (
+        {'mu', 'transposed'} if pkg is BART else {'cutpoints', 'trees', 'transposed'}
+    )
+    library = pkg.__name__.split('.')[-1]
+    rnames = set()
+    for type_ in ('wbart', 'pbart', 'lbart'):
+        method = f'getS3method("predict", "{type_}", envir = asNamespace("{library}"))'
+        rnames |= set(robjects.r(f'names(formals({method}))'))
+    for worker in ('pwbart', 'mc.pwbart'):
+        rnames |= set(robjects.r(f'names(formals({library}:::{worker}))'))
+    # drop what never crosses the wrapper: the dispatch arguments the wrapper
+    # binds itself (object, newdata) and the worker arguments the methods fill
+    # with the fit's own data (x.test, treedraws)
+    rnames -= {'...', 'object', 'newdata', 'x.test', 'treedraws'}
+
+    params = {
+        # the signature uses _ where R uses .
+        name.replace('_', '.'): param
+        for name, param in signature(pkg.mc_gbart.predict).parameters.items()
+        if name not in {'self', 'newdata'}
+    }
+    assert params.keys() <= rnames
+    assert rnames - params.keys() == unexposed
+    for name, param in params.items():
+        assert param.default is None, name
+
+
 @pytest.mark.timeout(180)
 def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
     """`mc.gbart` with ``mc_cores > 1`` runs without deadlocking.
@@ -283,7 +487,7 @@ def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
 
     # predict with mc_cores > 1 forks via mc.pwbart; unlike mc.gbart's fork the
     # children run single-threaded, so this stays deadlock-free without a guard.
-    yhat = bart.predict(data.x, **{'mc.cores': mc_cores})
+    yhat = bart.predict(data.x, mc_cores=mc_cores)
     assert yhat.shape == (bart.ndpost, n)
 
 

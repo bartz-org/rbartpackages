@@ -199,6 +199,8 @@ typehints_defaults = 'comma'
 napoleon_google_docstring = False
 napoleon_use_ivar = True
 napoleon_use_rtype = False
+# the appendix section that RObjectBase.__init_subclass__ adds to the wrappers
+napoleon_custom_sections = ['R documentation']
 
 # intersphinx
 intersphinx_mapping = dict(

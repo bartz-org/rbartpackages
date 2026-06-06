@@ -73,6 +73,18 @@ def test_rfunction_invalid_names() -> None:
         _base.rfunction(stub, library='base', rname='not a function')
 
 
+def test_doc_pulled_from_r_when_missing() -> None:
+    """A subclass without a docstring gets the R help page as documentation."""
+
+    class Lm(_base.RObjectBase):
+        _rfuncname = 'stats::lm'
+
+    assert Lm.__doc__ is not None
+    assert 'R documentation\n---------------' in Lm.__doc__
+    # content from the help page of stats::lm, indented as a literal block
+    assert '    Fitting Linear Models' in Lm.__doc__
+
+
 def test_fork_safe_native_threads(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pools are capped at one thread in the context and restored on exit."""
     calls: list[int] = []
