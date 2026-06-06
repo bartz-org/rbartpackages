@@ -33,6 +33,7 @@ from jaxtyping import AbstractDtype, Float64, Int32
 from numpy import ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
+from rpy2.robjects.language import LangVector
 from rpy2.robjects.methods import RS4
 
 # WORKAROUND(python<3.11): import NotRequired, Self, TypedDict from typing
@@ -89,8 +90,11 @@ class bart(RObjectBase):
     binaryOffset: Float64[ndarray, ' n'] | None = None
     """Per-observation offset on the latent probit scale (binary outcomes only)."""
 
-    call: object
-    """The R call that created the fit (an rpy2 language object)."""
+    call: LangVector
+    """The R call that created the fit.
+
+    With ``keepcall=False`` this is a dummy ``NULL()`` call, not ``None``.
+    """
 
     first_k: Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip'] | None = None
     """Burn-in draws of `k` (only when `k` is given a hyperprior)."""
@@ -256,10 +260,10 @@ class RunSamples(TypedDict):
     """
 
     k: NotRequired[Float64[ndarray, ' ndpost'] | Float64[ndarray, 'ndpost nchain']]
-    """End-node-prior `k` draws (present only when `k` is given a hyperprior)."""
+    """End-node-prior `k` draws (only with a `k` hyperprior, the binary default)."""
 
     sigma: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'ndpost nchain']
-    """Error-SD draws."""
+    """Error-SD draws; fixed at 1 for binary responses."""
 
     train: Float64[ndarray, 'n ndpost'] | Float64[ndarray, 'n ndpost nchain']
     """Training-point posterior function draws."""

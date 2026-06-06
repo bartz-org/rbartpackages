@@ -33,6 +33,7 @@ import pytest
 from jaxtyping import Float64
 from numpy import ndarray
 from rpy2 import robjects
+from rpy2.robjects.language import LangVector
 
 from rbartpackages import dbarts
 from tests.util import assert_array_equal, assert_close_matrices
@@ -266,6 +267,24 @@ def test_bart_splitprobs(data: Data) -> None:
     assert_array_equal(bart.varcount[:, 1:], np.zeros((NDPOST, p - 1), np.int32))
 
 
+def test_bart_keepcall(data: Data) -> None:
+    """The call component is an R language object.
+
+    With ``keepcall=False`` R stores a dummy ``NULL()`` call rather than
+    NULL, so the attribute is never exposed as None.
+    """
+    kw = dict(
+        x_train=data.x,
+        y_train=data.y,
+        ntree=NTREE,
+        nskip=NSKIP,
+        ndpost=NDPOST,
+        verbose=False,
+    )
+    assert isinstance(dbarts.bart(**kw).call, LangVector)
+    assert isinstance(dbarts.bart(**kw, keepcall=False).call, LangVector)
+
+
 def test_bart2(data: Data) -> None:
     """`bart2` takes a formula and a data frame; dict args become named vectors.
 
@@ -413,6 +432,23 @@ def test_dbarts_test_data(data: Data) -> None:
 
     (item,) = sampler.state.items()  # one state per chain
     assert item.value.rclass[0] == 'dbartsState'
+
+
+def test_dbarts_binary(data: Data) -> None:
+    """With a binary response, `run` pins `sigma` at 1 and draws `k`.
+
+    The sampler's default end-node prior for binary outcomes puts a
+    hyperprior on `k`, so its draws appear in the output.
+    """
+    n, _ = data.x.shape
+    control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
+    sampler = dbarts.dbarts(data.x, data.biny, control=control)
+    out = sampler.run(NSKIP, NDPOST)
+    assert sorted(out) == ['k', 'sigma', 'test', 'train', 'varcount']
+    assert out['train'].shape == (n, NDPOST)
+    assert_array_equal(out['sigma'], np.ones(NDPOST))
+    assert out['k'].shape == (NDPOST,)
+    assert np.all(out['k'] > 0)
 
 
 def test_dbarts_setters(data: Data) -> None:
