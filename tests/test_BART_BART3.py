@@ -32,6 +32,7 @@ added in BART3). Tests of BART-only behavior skip on BART3.
 
 import math
 from dataclasses import dataclass
+from inspect import Parameter, signature
 from types import ModuleType
 
 import numpy as np
@@ -39,6 +40,7 @@ import pandas as pd
 import pytest
 from jaxtyping import Float64
 from numpy import ndarray
+from rpy2 import robjects
 from rpy2.rinterface_lib.embedded import RRuntimeError
 
 from rbartpackages import BART, BART3
@@ -330,6 +332,75 @@ def test_predict_explicit_signature(pkg: ModuleType, data: Data) -> None:
             np.quantile(pred['prob_test'], probs[1], axis=0),
             rtol=1e-8,
         )
+
+
+def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
+    """Evaluate the argument defaults of an R function in isolation.
+
+    Defaults that are NULL, missing, or that cannot be evaluated standalone
+    (e.g. because they reference other arguments) are omitted.
+    """
+    rdefaults = robjects.r(f"""
+        Filter(
+            Negate(is.null),
+            lapply(
+                formals({rfuncname}),
+                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
+            )
+        )
+    """)
+    return {
+        name: np.asarray(value)
+        for name, value in zip(rdefaults.names, rdefaults, strict=True)
+    }
+
+
+def test_signature_defaults_match_r(pkg: ModuleType) -> None:
+    """The explicit signatures stay in sync with the wrapped R functions.
+
+    Every literal default in a Python signature must match its R counterpart,
+    and every R argument must be either exposed or deliberately unexposed, so
+    that an upstream update that changes a default or adds an argument fails
+    here instead of silently diverging.
+    """
+    # R arguments deliberately left out of the signatures (see the class
+    # docstrings)
+    gbart_unexposed = {'ntype'} if pkg is BART else {'ntype', 'TSVS'}
+    cases = [
+        (pkg.mc_gbart, gbart_unexposed, set()),
+        # gbart shares mc_gbart's signature but ignores mc.cores, whose R
+        # default is 1 rather than mc.gbart's 2
+        (pkg.gbart, gbart_unexposed, {'mc.cores'}),
+        (pkg.bartModelMatrix, set(), set()),
+    ]
+    for cls, unexposed, ignored in cases:
+        rfuncname = cls._rfuncname
+        params = {
+            # the signatures use _ where R uses . and trail it to dodge
+            # python keywords
+            name.removesuffix('_').replace('_', '.'): param
+            for name, param in signature(cls).parameters.items()
+        }
+        rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+        assert params.keys() <= rnames, rfuncname
+        assert rnames - params.keys() == unexposed, rfuncname
+
+        rdefaults = evaluated_r_formals(rfuncname)
+        for name, param in params.items():
+            if param.default is Parameter.empty or param.default is None:
+                continue  # required, or deferred to R
+            if name in ignored:
+                continue  # documented mismatch
+            # a literal Python default needs a comparable R default
+            assert name in rdefaults, f'{rfuncname}, argument {name}'
+            # strict=False: R types its literals loosely (TRUE vs 1, 100L vs
+            # 100), so compare values only
+            assert_array_equal(
+                np.ravel(param.default),
+                np.ravel(rdefaults[name]),
+                strict=False,
+                err_msg=f'{rfuncname}, argument {name}',
+            )
 
 
 @pytest.mark.timeout(180)
