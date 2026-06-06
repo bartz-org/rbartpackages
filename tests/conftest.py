@@ -25,9 +25,12 @@
 """Pytest configuration."""
 
 from re import fullmatch
+from sys import modules
 
 import numpy as np
 import pytest
+
+from tests.util import int_seed
 
 
 @pytest.fixture
@@ -39,3 +42,16 @@ def rng(request: pytest.FixtureRequest) -> np.random.Generator:
     nodeid = match.group(1)
     seed = np.array([nodeid], np.bytes_).view(np.uint8)
     return np.random.default_rng(seed)
+
+
+@pytest.fixture(autouse=True)
+def seed_r(rng: np.random.Generator) -> None:
+    """Seed the global R rng deterministically per test case.
+
+    Skipped if rpy2 is not loaded, to keep R-free tests R-free; tests that use
+    R load rpy2 at import time, so they are always covered.
+    """
+    if 'rpy2.robjects' in modules:
+        from rpy2 import robjects  # noqa: PLC0415, deferred to keep R optional
+
+        robjects.r['set.seed'](int_seed(rng))

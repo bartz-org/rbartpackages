@@ -26,7 +26,8 @@ SOFTWARE.
 
 # Other BART packages
 
-`rbartpackages` currently wraps `BART`, `BART3`, `bartMachine`, and `dbarts`.
+`rbartpackages` currently wraps `BART`, `BART3`, `bartMachine`, `dbarts`, and
+`missBART`.
 For a broader, regularly updated catalogue of BART implementations across R,
 Python, Julia and C++, see the list maintained in the bartz documentation:
 
