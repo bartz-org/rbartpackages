@@ -67,7 +67,7 @@ import rbartpackages
 # from whatever directory sphinx-build was invoked in (`make docs` uses
 # `docs/`), and without renv the R packages are missing or unpinned.
 with chdir(REPO.working_tree_dir):
-    import rbartpackages._base
+    import rbartpackages.base
 
 # -- Project information -----------------------------------------------------
 

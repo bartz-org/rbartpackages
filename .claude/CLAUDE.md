@@ -29,6 +29,7 @@ To check the code you write:
     - cheap to run (cached), idempotent; use liberally if R looks broken
 - run the unit tests relevant to your changes with `uv run pytest ...`
 - at the end, run the full suite with `make tests`
+- the changelog is bulk-updated before release, don't edit it
 
 ## Architecture
 
@@ -36,7 +37,7 @@ To check the code you write:
 
 | Module | Role |
 |---|---|
-| `_base.py` | `RObjectBase` (base class that calls an R function, converts args, and exposes the result's components as attributes) and the `rmethod` decorator; rpy2 converters for numpy/pandas/polars/jax/dict/bool |
+| `base.py` | `RObjectBase` (base class that calls an R function, converts args, and exposes the result's components as attributes) and the `rmethod` decorator; rpy2 converters for numpy/pandas/polars/jax/dict/bool |
 | `BART.py` | wrappers for the R package `BART` (`gbart`, `mc_gbart`, ...) |
 | `BART3.py` | wrappers for the R package `BART3` |
 | `bartMachine.py` | wrapper for the R package `bartMachine` (needs Java) |

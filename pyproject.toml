@@ -44,7 +44,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Each extra backs a soft-imported converter in `rbartpackages._base`.
+# Each extra backs a soft-imported converter in `rbartpackages.base`.
 jax = ["jax>=0.6.1"]
 pandas = ["pandas>=2.2.3"]
 polars = ["polars>=1.30.0", "pandas>=2.2.3"]
@@ -235,7 +235,7 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
-property-decorators = ["rbartpackages._base.rproperty"]
+property-decorators = ["rbartpackages.base.rproperty"]
 
 [tool.ruff.lint.flake8-copyright]
 min-file-size = 1

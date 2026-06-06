@@ -33,7 +33,7 @@ from numpy import ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 
-from rbartpackages._base import (
+from rbartpackages.base import (
     DataFrame,
     RObjectBase,
     drop_none,

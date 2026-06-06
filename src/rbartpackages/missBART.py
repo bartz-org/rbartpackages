@@ -33,7 +33,7 @@ from jaxtyping import Bool, Float64, Shaped
 from numpy import ndarray
 from rpy2.rlike.container import NamedList
 
-from rbartpackages._base import RObjectBase
+from rbartpackages.base import RObjectBase
 
 
 def _values(nl: NamedList) -> list[Any]:

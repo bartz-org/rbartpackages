@@ -44,7 +44,7 @@ from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 from rpy2.robjects.methods import RS4
 
-from rbartpackages._base import RObjectBase, rfunction, rmethod
+from rbartpackages.base import RObjectBase, rfunction, rmethod
 
 # The JVM reads its options only at startup; rJava starts it when the
 # bartMachine namespace is first loaded, which the rfunction decorations below

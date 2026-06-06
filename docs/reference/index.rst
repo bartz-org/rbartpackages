@@ -49,4 +49,4 @@ Base machinery
 .. autosummary::
     :toctree: _autogen/mod
 
-    rbartpackages._base
+    rbartpackages.base

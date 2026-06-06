@@ -39,7 +39,7 @@ from rpy2.robjects.methods import RS4
 # WORKAROUND(python<3.11): import NotRequired, Self, TypedDict from typing
 from typing_extensions import NotRequired, Self, TypedDict
 
-from rbartpackages._base import RObjectBase, rmethod, rproperty
+from rbartpackages.base import RObjectBase, rmethod, rproperty
 
 
 class String(AbstractDtype):
