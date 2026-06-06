@@ -8,6 +8,7 @@ Python wrappers of R BART (Bayesian Additive Regression Trees) packages, built o
 - [`BART3`](https://github.com/rsparapa/bnptools) (the development superset of `BART`)
 - [`bartMachine`](https://cran.r-project.org/package=bartMachine)
 - [`dbarts`](https://cran.r-project.org/package=dbarts)
+- [`missBART`](https://github.com/yongchengoh/missBART) (multivariate BART with non-ignorable missing responses)
 
 ## Installation
 
@@ -15,7 +16,7 @@ Python wrappers of R BART (Bayesian Additive Regression Trees) packages, built o
 pip install rbartpackages
 ```
 
-You also need R with the package(s) you want to use installed (`BART`, `dbarts`, `bartMachine` from CRAN; `BART3` from `rsparapa/bnptools` on GitHub). `bartMachine` additionally requires Java. Optional extras `pandas`, `polars`, and `jax` enable passing those array/frame types directly. See the documentation for details.
+You also need R with the package(s) you want to use installed (`BART`, `dbarts`, `bartMachine` from CRAN; `BART3` from `rsparapa/bnptools` and `missBART` from `yongchengoh/missBART` on GitHub). `bartMachine` additionally requires Java. Optional extras `pandas`, `polars`, and `jax` enable passing those array/frame types directly. See the documentation for details.
 
 ## Usage
 
@@ -34,7 +35,8 @@ R argument names with dots are passed with underscores (`x.train` → `x_train`)
 
 ## Links
 
-- [Documentation](https://bartz-org.github.io/rbartpackages/docs-dev)
+- [Documentation (latest release)](https://bartz-org.github.io/rbartpackages/docs)
+- [Documentation (development version)](https://bartz-org.github.io/rbartpackages/docs-dev)
 - [Repository](https://github.com/bartz-org/rbartpackages)
 - [List of BART packages](https://bartz-org.github.io/bartz/docs-dev/pkglist.html) (maintained in the bartz docs)
 
