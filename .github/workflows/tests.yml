@@ -222,6 +222,11 @@ jobs:
 
       - name: Generate documentation
         run: RPY2_CFFI_MODE=ABI make docs docs-latest
+        env:
+          # docs-latest runs its own `renv::restore()` in the release worktree;
+          # without a token its GitHub API calls (resolving `Remotes:` refs)
+          # are unauthenticated and flakily rate-limited on shared runners.
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Save documentation
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
