@@ -27,7 +27,7 @@
 # ruff: noqa: ANN002, ANN003
 
 from functools import partial
-from typing import Any, TypedDict
+from typing import Any, NotRequired, Self, TypedDict
 
 from jaxtyping import AbstractDtype, Float64, Int32
 from numpy import ndarray
@@ -250,6 +250,9 @@ class RunSamples(TypedDict):
     and multiple chains add a trailing `nchain` axis.
     """
 
+    k: NotRequired[Float64[ndarray, ' ndpost'] | Float64[ndarray, 'ndpost nchain']]
+    """End-node-prior `k` draws (present only when `k` is given a hyperprior)."""
+
     sigma: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'ndpost nchain']
     """Error-SD draws."""
 
@@ -292,9 +295,8 @@ class dbarts(RObjectBase):
     def run(self, *args, **kw) -> RunSamples | None:
         """Run the sampler for (burn-in plus) the given number of iterations.
 
-        The draws are returned as a dict of arrays (``None`` if the sampler is
-        run for zero samples); a ``'k'`` entry is added to the documented ones
-        when the end-node prior is modeled.
+        The draws are returned as a dict of arrays, ``None`` if the sampler
+        is run for zero samples.
         """
         out = self._run(*args, **kw)
         if not hasattr(out, 'items'):
@@ -323,7 +325,7 @@ class dbarts(RObjectBase):
         """Call the R copy method; returns the new sampler as an R object."""
         ...
 
-    def copy(self, *args, **kw) -> RObjectBase:
+    def copy(self, *args, **kw) -> Self:
         """Create a deep (default) or shallow copy of the sampler.
 
         The R method is broken once the sampler state has been cached; create

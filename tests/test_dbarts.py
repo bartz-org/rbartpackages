@@ -259,10 +259,11 @@ def test_bart_splitprobs(data: Data) -> None:
 
 
 def test_bart2(data: Data) -> None:
-    """`bart2` takes a formula and a data frame.
+    """`bart2` takes a formula and a data frame; dict args become named vectors.
 
     By default the chains are not combined, adding a leading axis to the
-    draws.
+    draws. Putting all the split probability on `x1` forces every split
+    there.
     """
     n, p = data.x.shape
     m, _ = data.x_test.shape
@@ -271,6 +272,8 @@ def test_bart2(data: Data) -> None:
         'y ~ x1 + x2 + x3',
         data=data.frame,
         test=data.test_frame,
+        split_probs={'x1': 1.0, '.default': 0.0},
+        proposal_probs={'birth_death': 0.5, 'change': 0.1, 'swap': 0.4, 'birth': 0.5},
         n_trees=NTREE,
         n_burn=NSKIP,
         n_samples=NDPOST,
@@ -281,6 +284,10 @@ def test_bart2(data: Data) -> None:
     assert bart.yhat_train.shape == (n_chains, NDPOST, n)
     assert bart.yhat_test.shape == (n_chains, NDPOST, m)
     assert bart.varcount.shape == (n_chains, NDPOST, p)
+    assert np.all(bart.varcount[..., 0] > 0)
+    assert_array_equal(
+        bart.varcount[..., 1:], np.zeros((n_chains, NDPOST, p - 1), np.int32)
+    )
     assert bart.sigma.shape == (n_chains, NDPOST)
     assert bart.first_sigma.shape == (n_chains, NSKIP)
     assert bart.n_chains == n_chains
@@ -340,7 +347,13 @@ def test_dbarts(data: Data) -> None:
     control = dbarts.dbartsControl(
         n_trees=NTREE, n_chains=1, n_threads=1, updateState=False
     )
-    sampler = dbarts.dbarts('y ~ x1 + x2 + x3', data=data.frame, control=control)
+    sampler = dbarts.dbarts(
+        'y ~ x1 + x2 + x3',
+        data=data.frame,
+        control=control,
+        # exercise the dict-to-named-vector conversion of proposal_probs
+        proposal_probs={'birth_death': 0.5, 'change': 0.1, 'swap': 0.4, 'birth': 0.5},
+    )
 
     out = sampler.run(NSKIP, NDPOST)
     assert sorted(out) == ['sigma', 'test', 'train', 'varcount']
