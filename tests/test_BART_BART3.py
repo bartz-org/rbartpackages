@@ -403,6 +403,45 @@ def test_signature_defaults_match_r(pkg: ModuleType) -> None:
             )
 
 
+def test_predict_signature_matches_r(pkg: ModuleType) -> None:
+    """The explicit `predict` signature stays in sync with the R methods.
+
+    R's `predict` dispatches to one S3 method per fit type, and each method
+    forwards its ``...`` to the `pwbart`/`mc.pwbart` workers: every Python
+    argument must appear in the union of their formals, and every R argument
+    must be either exposed or deliberately unexposed. The R defaults vary
+    between the methods and the workers, so the signature cannot pin them:
+    every argument must defer to R with ``None``.
+    """
+    # R arguments deliberately left out of the signature (see the notes in
+    # the predict docstrings)
+    unexposed = (
+        {'mu', 'transposed'} if pkg is BART else {'cutpoints', 'trees', 'transposed'}
+    )
+    library = pkg.__name__.split('.')[-1]
+    rnames = set()
+    for type_ in ('wbart', 'pbart', 'lbart'):
+        method = f'getS3method("predict", "{type_}", envir = asNamespace("{library}"))'
+        rnames |= set(robjects.r(f'names(formals({method}))'))
+    for worker in ('pwbart', 'mc.pwbart'):
+        rnames |= set(robjects.r(f'names(formals({library}:::{worker}))'))
+    # drop what never crosses the wrapper: the dispatch arguments the wrapper
+    # binds itself (object, newdata) and the worker arguments the methods fill
+    # with the fit's own data (x.test, treedraws)
+    rnames -= {'...', 'object', 'newdata', 'x.test', 'treedraws'}
+
+    params = {
+        # the signature uses _ where R uses .
+        name.replace('_', '.'): param
+        for name, param in signature(pkg.mc_gbart.predict).parameters.items()
+        if name not in {'self', 'newdata'}
+    }
+    assert params.keys() <= rnames
+    assert rnames - params.keys() == unexposed
+    for name, param in params.items():
+        assert param.default is None, name
+
+
 @pytest.mark.timeout(180)
 def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
     """`mc.gbart` with ``mc_cores > 1`` runs without deadlocking.
