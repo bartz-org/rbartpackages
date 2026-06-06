@@ -35,7 +35,8 @@ R argument names with dots are passed with underscores (`x.train` → `x_train`)
 
 ## Links
 
-- [Documentation](https://bartz-org.github.io/rbartpackages/docs-dev)
+- [Documentation (latest release)](https://bartz-org.github.io/rbartpackages/docs)
+- [Documentation (development version)](https://bartz-org.github.io/rbartpackages/docs-dev)
 - [Repository](https://github.com/bartz-org/rbartpackages)
 - [List of BART packages](https://bartz-org.github.io/bartz/docs-dev/pkglist.html) (maintained in the bartz docs)
 
