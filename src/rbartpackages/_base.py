@@ -26,9 +26,10 @@ import ctypes
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from functools import wraps
+from inspect import cleandoc
 from re import fullmatch, match
 from textwrap import indent
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 from rpy2 import robjects
@@ -99,6 +100,18 @@ def dict_to_r(x: dict[str, Any]) -> robjects.ListVector:
 
 
 DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
+
+
+class DataFrame(Protocol):
+    """Duck type of the dataframe arguments accepted by the wrappers.
+
+    Both `pandas.DataFrame` and `polars.DataFrame` match; they are converted
+    to R data frames, with categorical columns becoming factors.
+    """
+
+    def __dataframe__(self) -> object:
+        """Convert to a dataframe-interchange-protocol object."""
+
 
 R_IDENTIFIER = r'(?:[a-zA-Z]|\.(?![0-9]))[a-zA-Z0-9._]*'
 
@@ -235,11 +248,22 @@ class RObjectBase:
         """Automatically add R documentation to subclasses."""
         library, name = cls._rfuncname.split('::')
         page = Package(library).fetch(name)
-        if cls.__doc__ is None:
-            cls.__doc__ = ''
-        # the R help text is plain text, not valid RST: append it as a literal
-        # block so docutils renders it verbatim instead of misparsing it
-        cls.__doc__ += '\nR documentation::\n\n' + indent(page.to_docstring(), '    ')
+        # the leading empty line keeps the docstring processors' dedent of
+        # everything-after-the-first-line a no-op
+        parts = ['']
+        if cls.__doc__:
+            # dedent the hand-written docstring so that the appended text sits
+            # at the same indentation level (sections would not parse otherwise)
+            parts.append(cleandoc(cls.__doc__))
+        # a numpy-style section header (registered with napoleon in the docs
+        # config) so that a Parameters section in the docstring cannot absorb
+        # the appendix; the R help text is plain text, not valid RST, hence
+        # the literal block, which docutils renders verbatim
+        parts.append(
+            'R documentation\n---------------\n::\n\n'
+            + indent(page.to_docstring(), '    ')
+        )
+        cls.__doc__ = '\n\n'.join(parts)
 
 
 def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:

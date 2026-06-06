@@ -39,7 +39,7 @@ def test_doc_pulled_from_r_when_missing() -> None:
         _rfuncname = 'stats::lm'
 
     assert Lm.__doc__ is not None
-    assert 'R documentation::' in Lm.__doc__
+    assert 'R documentation\n---------------' in Lm.__doc__
     # content from the help page of stats::lm, indented as a literal block
     assert '    Fitting Linear Models' in Lm.__doc__
 

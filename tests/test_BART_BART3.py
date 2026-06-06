@@ -238,6 +238,51 @@ def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
     check_predict(bart, x_test, binary)
 
 
+def test_explicit_signature(pkg: ModuleType, data: Data) -> None:
+    """BART3's explicit `__init__` forwards its arguments to R faithfully.
+
+    The leading arguments work positionally, `lambda_` reaches R's ``lambda``
+    (here fixing the error SD at `sigest`), the `probs` tuple sets the summary
+    quantiles, and arguments outside the signature are rejected instead of
+    being forwarded to R. BART keeps the generic pass-through interface, so
+    the test skips on it.
+    """
+    if pkg is BART:
+        pytest.skip('BART keeps the generic *args/**kw interface')
+    probs = 0.25, 0.75
+    bart = pkg.gbart(
+        data.x,
+        data.y,
+        data.x_test,
+        lambda_=0.0,
+        sigest=1.0,
+        ntree=NTREE,
+        nskip=NSKIP,
+        ndpost=NDPOST,
+        probs=probs,
+    )
+    # lambda=0 means the error SD is fixed and known at sigest: R returns no
+    # sigma draws and falls back to sigest for sigma_mean
+    assert bart.sigma is None
+    assert bart.sigma_ is None
+    assert bart.sigma_mean == 1.0
+    # R's default quantile algorithm matches numpy's default interpolation
+    assert_close_matrices(
+        bart.yhat_test_lower,
+        np.quantile(bart.yhat_test, probs[0], axis=0),
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    assert_close_matrices(
+        bart.yhat_test_upper,
+        np.quantile(bart.yhat_test, probs[1], axis=0),
+        rtol=1e-8,
+        atol=1e-8,
+    )
+    with pytest.raises(TypeError, match='unexpected keyword'):
+        pkg.gbart(data.x, data.y, hostname=True)
+
+
 @pytest.mark.timeout(180)
 def test_mc_gbart_multicore(pkg: ModuleType, data: Data) -> None:
     """`mc.gbart` with ``mc_cores > 1`` runs without deadlocking.
