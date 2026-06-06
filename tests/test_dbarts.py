@@ -32,6 +32,7 @@ import pandas as pd
 import pytest
 from jaxtyping import Float64
 from numpy import ndarray
+from rpy2 import robjects
 
 from rbartpackages import dbarts
 from tests.util import assert_array_equal, assert_close_matrices
@@ -88,8 +89,15 @@ def data(rng: np.random.Generator) -> Data:
 
 def test_docstring() -> None:
     """The R documentation is attached to the wrapper classes."""
-    classes = (dbarts.bart, dbarts.bart2, dbarts.rbart_vi, dbarts.dbarts)
-    for cls in (*classes, dbarts.dbartsControl):
+    classes = (
+        dbarts.bart,
+        dbarts.bart2,
+        dbarts.rbart_vi,
+        dbarts.dbarts,
+        dbarts.dbartsControl,
+        dbarts.dbartsData,
+    )
+    for cls in classes:
         assert 'R documentation' in cls.__doc__
 
 
@@ -390,3 +398,84 @@ def test_dbarts_test_data(data: Data) -> None:
     sampler = dbarts.dbarts(data.x, data.y, test=data.x_test, control=control)
     out = sampler.run(NSKIP, NDPOST)
     assert out['test'].shape == (m, NDPOST)
+
+
+def test_dbarts_setters(data: Data) -> None:
+    """The set* methods replace the sampler's components in place.
+
+    Unforced predictor updates report success, the offsets enter the
+    train/test fits, a `dbartsData` swaps the data wholesale, and a
+    ``keepTrees`` control makes `predict` return the kept draws.
+    """
+    n, _ = data.x.shape
+    m, _ = data.x_test.shape
+    control = dbarts.dbartsControl(
+        n_trees=NTREE, n_chains=1, n_threads=1, n_samples=NDPOST
+    )
+    sampler = dbarts.dbarts(data.x, data.y, test=data.x_test, control=control)
+
+    # unforced updates report success (the trees are stumps, so no leaf can
+    # end up empty); whole-matrix updates are forced by default
+    assert sampler.setPredictor(2 * data.x, forceUpdate=False).item()
+    assert sampler.setPredictor(data.x[:, 0], 1).item()  # column 1, 1-based
+    sampler.setSigma(1.0)
+
+    # replacing the test predictors changes the test draws
+    sampler.setTestPredictor(data.x[:10])
+    out = sampler.run(NSKIP, NDPOST)
+    assert out['test'].shape == (10, NDPOST)
+
+    # the test offset enters the test draws only
+    sampler.setTestPredictorAndOffset(data.x_test, 1e6)
+    out = sampler.run(0, NDPOST)
+    assert out['test'].shape == (m, NDPOST)
+    assert np.all(out['test'] > 1e5)
+    assert np.all(np.abs(out['train']) < 1e5)
+    sampler.setTestOffset(0.0)
+    out = sampler.run(0, NDPOST)
+    assert np.all(np.abs(out['test']) < 1e5)
+
+    # the train offset enters the train draws (the function itself stays on
+    # the scale of y, so the draws sit at the offset)
+    sampler.setOffset(np.full(n, 1e3))
+    out = sampler.run(NSKIP, NDPOST)
+    assert_close_matrices(out['train'].mean(axis=1), np.full(n, 1e3), rtol=0.01)
+
+    # the model (priors) can be grafted from another sampler, as the
+    # dbartsModel constructor is not exported
+    other = dbarts.dbarts(data.x, data.y, control=control)
+    sampler.setModel(robjects.r['$'](other._robject, 'model'))
+
+    # a dbartsData replaces the training data (and drops the test data)
+    sampler.setData(dbarts.dbartsData('y ~ x1 + x2 + x3', data.frame.iloc[: n // 2]))
+    out = sampler.run(NSKIP, NDPOST)
+    assert out['train'].shape == (n // 2, NDPOST)
+    assert out['test'] is None
+
+    # a keepTrees control makes predict return the kept draws
+    keeping = dbarts.dbartsControl(
+        n_trees=NTREE, n_chains=1, n_threads=1, n_samples=NDPOST, keepTrees=True
+    )
+    sampler.setControl(keeping)
+    sampler.run(NSKIP, NDPOST)
+    assert sampler.predict(data.x_test).shape == (m, NDPOST)
+
+
+def test_dbarts_show_trees(data: Data, capfd: pytest.CaptureFixture) -> None:
+    """`show` and `printTrees` write to the R console, `plotTree` to a device."""
+    control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
+    sampler = dbarts.dbarts(data.x, data.y, control=control)
+    sampler.run(NSKIP, NDPOST)
+
+    sampler.show()
+    assert 'dbarts sampler' in capfd.readouterr().out
+
+    sampler.printTrees(1)  # the current first tree
+    assert capfd.readouterr().out.strip()
+
+    # plot to a null device to keep the test headless
+    robjects.r('pdf(NULL)')
+    try:
+        sampler.plotTree(1)
+    finally:
+        robjects.r('invisible(dev.off())')

@@ -351,7 +351,7 @@ class dbarts(RObjectBase):
 
     @rmethod
     def setControl(self, *args, **kw) -> object:
-        """Replace the control object of the sampler."""
+        """Replace the control object of the sampler; needs `n_samples` set."""
         ...
 
     @rmethod
@@ -361,7 +361,7 @@ class dbarts(RObjectBase):
 
     @rmethod
     def setData(self, *args, **kw) -> object:
-        """Replace the data object of the sampler."""
+        """Replace the data object of the sampler (a `dbartsData`)."""
         ...
 
     @rmethod
@@ -383,8 +383,10 @@ class dbarts(RObjectBase):
     def setPredictor(self, *args, **kw) -> object:
         """Replace the predictor matrix (or a single column).
 
-        Returns whether the operation succeeded: it fails if a tree ends up
-        with an empty leaf, rolling back single-column updates.
+        Unforced updates (``forceUpdate=False``, the single-column default)
+        return whether the update succeeded: it fails if a tree ends up with
+        an empty leaf, rolling back the change. Whole-matrix updates are
+        forced by default.
         """
         ...
 
@@ -423,3 +425,20 @@ class dbartsControl(RObjectBase):
     """
 
     _rfuncname = 'dbarts::dbartsControl'
+
+
+class dbartsData(RObjectBase):
+    """
+    Python interface to dbarts::dbartsData.
+
+    A string `formula` argument is converted to an R formula; the
+    backwards-compatible matrix form passes through unchanged. Wraps an R S4
+    object with no components exposed; pass it to `dbarts.setData` or in
+    place of the `formula` argument of the fitting interfaces.
+    """
+
+    _rfuncname = 'dbarts::dbartsData'
+
+    def __init__(self, *args, **kw) -> None:
+        args, kw = formula_arg(args, kw)
+        super().__init__(*args, **kw)
