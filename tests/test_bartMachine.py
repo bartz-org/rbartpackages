@@ -83,6 +83,7 @@ def fit(
     data: Data, rng: np.random.Generator, *, classification: bool = False, **kw: object
 ) -> bartMachine.bartMachine:
     """Fit a small bartMachine model on `data`."""
+    bartMachine.set_bart_machine_num_cores(1)
     return bartMachine.bartMachine(
         X=data.x,
         y=data.labels if classification else data.y,
@@ -91,7 +92,6 @@ def fit(
         num_iterations_after_burn_in=NPOST,
         seed=int_seed(rng),
         verbose=False,
-        num_cores=1,
         **kw,
     )
 
@@ -99,6 +99,15 @@ def fit(
 def test_docstring() -> None:
     """The R documentation is attached to the wrapper class."""
     assert 'R documentation' in bartMachine.bartMachine.__doc__
+
+
+def test_num_cores() -> None:
+    """The thread count round-trips through the package-global setting."""
+    initial = bartMachine.bart_machine_num_cores()
+    bartMachine.set_bart_machine_num_cores(2)
+    assert bartMachine.bart_machine_num_cores() == 2
+    bartMachine.set_bart_machine_num_cores(initial)
+    assert bartMachine.bart_machine_num_cores() == initial
 
 
 def check_common_attributes(bm: bartMachine.bartMachine, data: Data) -> None:

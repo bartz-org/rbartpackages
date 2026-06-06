@@ -25,6 +25,11 @@
 """Wrapper for the R package bartMachine.
 
 bartMachine wants data frames, so this module requires the ``pandas`` extra.
+
+Importing this module loads bartMachine's R namespace, which starts the JVM.
+JVM options can only be set before that: the import defaults the heap size
+limit to 5 GB and enables the Vector API module bartMachine uses on JDK 16+;
+to customize, set R's ``java.parameters`` option before the first import.
 """
 
 # ruff: noqa: ANN002, ANN003
@@ -40,6 +45,18 @@ from rpy2.rlike.container import NamedList
 from rpy2.robjects.methods import RS4
 
 from rbartpackages._base import RObjectBase, rfunction, rmethod
+
+# The JVM reads its options only at startup; rJava starts it when the
+# bartMachine namespace is first loaded, which the rfunction decorations below
+# do at import time. So set the options now: default the heap size limit
+# unless the user already set java.parameters, and always enable the
+# (incubating) Vector API, which bartMachine uses on JDK 16+ (fitting raises
+# NoClassDefFoundError without it).
+robjects.r("""local({
+    params <- getOption("java.parameters")
+    if (is.null(params)) params <- "-Xmx5000m"
+    options(java.parameters = union(params, "--add-modules=jdk.incubator.vector"))
+})""")
 
 
 class Posterior(TypedDict):
@@ -65,10 +82,8 @@ class bartMachine(RObjectBase):
     """
     Python interface to bartMachine::bartMachine.
 
-    In addition to R's parameters, the constructor accepts `num_cores`, passed
-    to R's `set_bart_machine_num_cores` before fitting, and `megabytes`, the
-    JVM heap size limit (effective only before the JVM starts, i.e., before
-    the first rJava use in the process).
+    The number of fitting threads is a package-global setting, see
+    `set_bart_machine_num_cores`.
     """
 
     _rfuncname = 'bartMachine::bartMachine'
@@ -279,18 +294,7 @@ class bartMachine(RObjectBase):
         ('verbose', bool),
     )
 
-    def __init__(
-        self, *args, num_cores: int | None = None, megabytes: int = 5000, **kw
-    ) -> None:
-        # bartMachine uses the (incubating) Vector API on JDK 16+, so the JVM
-        # must be started with that module or fitting raises NoClassDefFoundError.
-        robjects.r(
-            'options(java.parameters = c('
-            f'"-Xmx{megabytes:d}m", "--add-modules=jdk.incubator.vector"))'
-        )
-        robjects.r('loadNamespace("bartMachine")')
-        if num_cores is not None:
-            robjects.r(f'bartMachine::set_bart_machine_num_cores({int(num_cores)})')
+    def __init__(self, *args, **kw) -> None:
         super().__init__(*args, **kw)
 
         # fix up attributes
@@ -324,7 +328,7 @@ class bartMachine(RObjectBase):
         ...
 
 
-@partial(rfunction, rname='bart_machine_get_posterior')
+@partial(rfunction, library='bartMachine', rname='bart_machine_get_posterior')
 def _bart_machine_get_posterior(
     bart_machine: bartMachine, new_data: DataFrame, *args, **kw
 ) -> object:
@@ -346,7 +350,18 @@ def bart_machine_get_posterior(
     return cast(Posterior, {str(it.name): it.value for it in out.items()})
 
 
-@rfunction
+@partial(rfunction, library='bartMachine', rname='bart_machine_num_cores')
+def _bart_machine_num_cores() -> object:
+    """Call R's `bart_machine_num_cores`; returns a length-1 vector."""
+    ...
+
+
+def bart_machine_num_cores() -> int:
+    """Return the number of threads `bartMachine` uses to fit the model."""
+    return int(cast(ndarray, _bart_machine_num_cores()).item())
+
+
+@partial(rfunction, library='bartMachine')
 def get_sigsqs(
     bart_machine: bartMachine, *args, **kw
 ) -> (
@@ -358,3 +373,17 @@ def get_sigsqs(
     keeps the pre-MCMC initial value as first entry.
     """
     ...
+
+
+@partial(rfunction, library='bartMachine', rname='set_bart_machine_num_cores')
+def _set_bart_machine_num_cores(num_cores: int) -> object:
+    """Call R's `set_bart_machine_num_cores`; returns NULL."""
+    ...
+
+
+def set_bart_machine_num_cores(num_cores: int) -> None:
+    """Set the number of threads `bartMachine` uses to fit the model.
+
+    A package-global setting that persists across fits.
+    """
+    _set_bart_machine_num_cores(num_cores)
