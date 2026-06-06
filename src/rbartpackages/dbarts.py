@@ -27,11 +27,14 @@
 # ruff: noqa: ANN002, ANN003
 
 from functools import partial
-from typing import Any, NotRequired, Self, TypedDict
+from typing import Any
 
 from jaxtyping import AbstractDtype, Float64, Int32
 from numpy import ndarray
 from rpy2 import robjects
+
+# WORKAROUND(python<3.11): import NotRequired, Self, TypedDict from typing
+from typing_extensions import NotRequired, Self, TypedDict
 
 from rbartpackages._base import RObjectBase, rmethod
 
