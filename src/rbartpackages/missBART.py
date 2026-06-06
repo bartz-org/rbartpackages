@@ -36,7 +36,7 @@ from rpy2.rlike.container import NamedList
 from rbartpackages._base import RObjectBase
 
 
-def _values(nl: NamedList) -> list:
+def _values(nl: NamedList) -> list[Any]:
     return [it.value for it in nl.items()]
 
 
@@ -46,7 +46,8 @@ class missBART2(RObjectBase):
 
     If `x_predict` is not specified, the wrapper passes ``predict=False`` and a
     placeholder `x_predict`, because the R code crashes on its own default
-    ``x_predict = c()`` (`as.matrix(NULL)` is an error).
+    ``x_predict = c()`` (`as.matrix(NULL)` is an error). Explicitly passing
+    ``predict=True`` without `x_predict` raises `ValueError`.
     """
 
     _rfuncname = 'missBART::missBART2'
@@ -155,6 +156,9 @@ class missBART2(RObjectBase):
         # x is the 1st parameter of R's missBART2, x_predict the 3rd; reuse x
         # as a placeholder that predict=False leaves untouched (see class doc)
         if len(args) < 3 and 'x_predict' not in kw:
+            if kw.get('predict'):
+                msg = 'predict=True requires x_predict'
+                raise ValueError(msg)
             x = args[0] if args else kw.get('x')
             if x is not None:
                 kw = dict(kw, x_predict=x, predict=False)

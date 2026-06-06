@@ -81,7 +81,9 @@ def make_data(rng: np.random.Generator, p: int) -> Data:
     return Data(x, y, x_predict, n_missing)
 
 
-def fit_missBART2(data: Data, rng: np.random.Generator, **kw: object) -> object:
+def fit_missBART2(
+    data: Data, rng: np.random.Generator, **kw: object
+) -> missBART.missBART2:
     """Fit `missBART2` on `data` with small, fast MCMC settings."""
     robjects.r['set.seed'](int_seed(rng))
     return missBART.missBART2(
@@ -175,3 +177,10 @@ def test_missing_x(rng: np.random.Generator) -> None:
     assert_array_equal(fit.x[:, :q], data.x)
     assert_array_equal(fit.x[:, q:], (~np.isnan(data.x)).astype(float))
     assert fit.new_y_post is None
+
+
+def test_predict_without_x_predict(rng: np.random.Generator) -> None:
+    """Explicit `predict=True` without `x_predict` raises an error."""
+    data = make_data(rng, p=1)
+    with pytest.raises(ValueError, match='x_predict'):
+        fit_missBART2(data, rng, predict=True)
