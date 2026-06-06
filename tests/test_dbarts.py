@@ -163,7 +163,9 @@ def test_bart(data: Data, binary: bool, keeptrees: bool) -> None:
     assert bart.varcount.dtype == np.int32
     assert bart.k is None  # k is fixed by default, so it has no draws
     if keeptrees:
-        assert bart.fit is not None
+        # the kept sampler is wrapped, so the dbarts interface works on it
+        assert isinstance(bart.fit, dbarts.dbarts)
+        assert bart.fit.predict(data.x_test).shape == (m, NDPOST)
         assert bart.n_chains is None  # reported only when the sampler is dropped
     else:
         assert bart.fit is None
@@ -352,7 +354,9 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
     assert fit.first_tau.shape == (NSKIP,)
     assert fit.sigma.shape == (NDPOST,)
     assert isinstance(fit.sigest, float)
-    assert fit.fit is not None  # keepTrees defaults to True for rbart_vi
+    # keepTrees defaults to True for rbart_vi; one wrapped sampler per chain
+    (sampler,) = fit.fit
+    assert isinstance(sampler, dbarts.dbarts)
     assert fit.n_chains is None
     assert fit.seed.dtype == np.int32  # an R .Random.seed vector
     assert_array_equal(fit.group_by, group.astype(str), strict=False)
@@ -408,12 +412,14 @@ def test_dbarts(data: Data) -> None:
     # the field properties read off the live R object: setResponse shows
     # through data, and the state is never cached with updateState=False
     assert sampler.model.rclass[0] == 'dbartsModel'
-    assert sampler.control.rclass[0] == 'dbartsControl'
+    assert isinstance(sampler.control, dbarts.dbartsControl)
+    assert isinstance(sampler.data, dbarts.dbartsData)
     assert sampler.state is None
 
     # replacing the response redirects the fit
     sampler.setResponse(-data.y)
-    assert_array_equal(np.asarray(robjects.r('function(d) d@y')(sampler.data)), -data.y)
+    y = robjects.r('function(d) d@y')(sampler.data._robject)
+    assert_array_equal(np.asarray(y), -data.y)
     out3 = sampler.run(NSKIP, NDPOST)
     assert_close_matrices(out3['train'].mean(axis=1), -data.y, rtol=0.5)
 
@@ -492,10 +498,10 @@ def test_dbarts_setters(data: Data) -> None:
     # (absorbed by either the trees or sigma), so where the short-run draws
     # sit depends on the seed
     sampler.setOffset(np.full(n, 1e3))
-    offset = robjects.r('function(d) d@offset')(sampler.data)
+    offset = robjects.r('function(d) d@offset')(sampler.data._robject)
     assert_array_equal(np.asarray(offset), np.full(n, 1e3))
     sampler.setOffset(0.0)  # scalars are expanded to the n observations
-    offset = robjects.r('function(d) d@offset')(sampler.data)
+    offset = robjects.r('function(d) d@offset')(sampler.data._robject)
     assert_array_equal(np.asarray(offset), np.zeros(n))
 
     # the model (priors) can be grafted from another sampler, as the
@@ -509,11 +515,18 @@ def test_dbarts_setters(data: Data) -> None:
     assert out['train'].shape == (n // 2, NDPOST)
     assert out['test'] is None
 
+    # the wrapped data property feeds back into setData: grafting another
+    # sampler's data restores the full training set
+    sampler.setData(other.data)
+    out = sampler.run(NSKIP, NDPOST)
+    assert out['train'].shape == (n, NDPOST)
+
     # a keepTrees control makes predict return the kept draws
     keeping = dbarts.dbartsControl(
         n_trees=NTREE, n_chains=1, n_threads=1, n_samples=NDPOST, keepTrees=True
     )
     sampler.setControl(keeping)
+    sampler.setControl(sampler.control)  # the control property round-trips
     sampler.run(NSKIP, NDPOST)
     assert sampler.predict(data.x_test).shape == (m, NDPOST)
 

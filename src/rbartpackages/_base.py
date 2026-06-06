@@ -25,7 +25,7 @@
 import ctypes
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from functools import wraps
+from functools import partial, wraps
 from re import fullmatch, match
 from textwrap import indent
 from typing import Any
@@ -35,6 +35,9 @@ from rpy2 import robjects
 from rpy2.robjects import BoolVector, conversion, numpy2ri
 from rpy2.robjects.help import Package
 from rpy2.robjects.methods import RS4
+
+# WORKAROUND(python<3.11): import Self from typing
+from typing_extensions import Self
 
 # converter for pandas
 PANDAS_CONVERTER = conversion.Converter('pandas')
@@ -235,6 +238,19 @@ class RObjectBase:
         self._robject = self._invoke_rfunc(args, kw)
         self._set_attrs_from_robject()
 
+    @classmethod
+    def _wrap(cls, robject: object) -> Self:
+        """Wrap an existing R object, skipping the call to the R function.
+
+        The named components of `robject` are exposed as attributes like in
+        `__init__`, but any subclass post-processing of the attributes is
+        skipped.
+        """
+        self = object.__new__(cls)
+        self._robject = robject
+        self._set_attrs_from_robject()
+        return self
+
     def __init_subclass__(cls, **kw: Any) -> None:
         """Automatically add R documentation to subclasses."""
         library, name = cls._rfuncname.split('::')
@@ -297,7 +313,12 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
     return impl
 
 
-def rproperty(meth: Callable, *, rname: str | None = None) -> property:
+def rproperty(
+    meth: Callable | None = None,
+    *,
+    rname: str | None = None,
+    wrap: type[RObjectBase] | None = None,
+) -> property | Callable[[Callable], property]:
     """Automatically implement a read-only property using the corresponding R field.
 
     Unlike the attributes snapshotted by `RObjectBase.__init__`, the field is
@@ -308,9 +329,13 @@ def rproperty(meth: Callable, *, rname: str | None = None) -> property:
     ----------
     meth
         A method in a subclass of `RObjectBase`. The original implementation
-        is completely discarded.
+        is completely discarded. If not given, return a decorator instead, to
+        allow using the keyword arguments.
     rname
         The name of the field in R. If not specified, use the name of `meth`.
+    wrap
+        A `RObjectBase` subclass to wrap the field with, instead of
+        converting it to a Python value.
 
     Returns
     -------
@@ -321,10 +346,12 @@ def rproperty(meth: Callable, *, rname: str | None = None) -> property:
     --------
     >>> class MyRObject(RObjectBase):
     ...     _rfuncname = 'mypackage::myfunction'
-    ...     @partial(rproperty, rname='my.field')
+    ...     @rproperty(rname='my.field')
     ...     def my_field(self):
     ...         ...
     """
+    if meth is None:
+        return partial(rproperty, rname=rname, wrap=wrap)
     if rname is None:
         rname = meth.__name__
 
@@ -333,8 +360,10 @@ def rproperty(meth: Callable, *, rname: str | None = None) -> property:
         out = robjects.r['$'](self._robject, rname)
         if out is robjects.NULL:
             return None
-        else:
+        elif wrap is None:
             return self._r2py(out)
+        else:
+            return wrap._wrap(out)  # noqa: SLF001, base-class access
 
     return property(impl)
 

@@ -70,186 +70,33 @@ def named_vector_args(kw: dict[str, Any], names: tuple[str, ...]) -> dict[str, A
     return kw
 
 
-class bart(RObjectBase):
+class dbartsControl(RObjectBase):
     """
-    Python interface to dbarts::bart.
+    Python interface to dbarts::dbartsControl.
 
-    The named numeric vector forms of the `splitprobs` and `proposalprobs`
-    parameters must be specified as dictionaries in Python; a named
-    `splitprobs` requires `x_train` to have column names (e.g., a data frame).
-
-    In the attribute shapes below, `ndpost` counts the kept draws
-    (``ndpost / keepevery``). Multiple chains are stacked into the `ndpost`
-    axis when combined (``combinechains=True``, the `bart` default), and add
-    a leading `nchain` axis otherwise.
+    Wraps an R S4 object with no components exposed; pass it as the `control`
+    argument of `dbarts`, which also hands it back through the
+    `dbarts.control` property.
     """
 
-    _rfuncname = 'dbarts::bart'
-    _named_vectors = ('splitprobs', 'proposalprobs')
+    _rfuncname = 'dbarts::dbartsControl'
 
-    binaryOffset: Float64[ndarray, ' n'] | None = None
-    """Per-observation offset on the latent probit scale (binary outcomes only)."""
 
-    call: LangVector
-    """The R call that created the fit.
+class dbartsData(RObjectBase):
+    """
+    Python interface to dbarts::dbartsData.
 
-    With ``keepcall=False`` this is a dummy ``NULL()`` call, not ``None``.
+    A string `formula` argument is converted to an R formula; the
+    backwards-compatible matrix form passes through unchanged. Wraps an R S4
+    object with no components exposed; pass it to `dbarts.setData` or in
+    place of the `formula` argument of the fitting interfaces.
     """
 
-    first_k: Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip'] | None = None
-    """Burn-in draws of `k` (only when `k` is given a hyperprior)."""
-
-    first_sigma: (
-        Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip'] | None
-    ) = None
-    """Burn-in error-SD draws (continuous outcomes only)."""
-
-    fit: object | None = None
-    """The R sampler object, kept only with ``keeptrees`` or ``keepsampler``."""
-
-    k: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost'] | None = None
-    """End-node-prior `k` draws (only when `k` is given a hyperprior)."""
-
-    n_chains: int | None = None
-    """Number of MCMC chains; ``None`` when the sampler is kept in `fit`."""
-
-    sigest: float | None = None
-    """Rough residual SD used to set the sigma prior (continuous outcomes only)."""
-
-    sigma: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost'] | None = None
-    """Kept error-SD draws, continuous outcomes only (burn-in is in `first_sigma`)."""
-
-    varcount: Int32[ndarray, 'ndpost p'] | Int32[ndarray, 'nchain ndpost p']
-    """Per-draw count of splits on each variable, summed over trees."""
-
-    y: Float64[ndarray, ' n'] | None = None
-    """The training responses (continuous outcomes only)."""
-
-    yhat_test: (
-        Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m'] | None
-    ) = None
-    """Test-point posterior function draws; ``None`` without test data."""
-
-    yhat_test_mean: Float64[ndarray, ' m'] | None = None
-    """Posterior mean of `yhat_test` (continuous outcomes with test data only)."""
-
-    yhat_train: (
-        Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | None
-    ) = None
-    """Training-point posterior function draws (latent probit scale for binary).
-
-    ``None`` with ``keeptrainfits=False``.
-    """
-
-    yhat_train_mean: Float64[ndarray, ' n'] | None = None
-    """Posterior mean of `yhat_train` (continuous outcomes only)."""
-
-    def __init__(self, *args, **kw) -> None:
-        super().__init__(*args, **named_vector_args(kw, self._named_vectors))
-
-        # fix up attributes
-        # R fills optional components with NULL (e.g. yhat.test without test
-        # data); expose them as None like the components that are dropped
-        for name, value in list(vars(self).items()):
-            if value is robjects.NULL:
-                setattr(self, name, None)
-        if self.n_chains is not None:
-            self.n_chains = self.n_chains.item()
-        if self.sigest is not None:
-            self.sigest = self.sigest.item()
-
-    @rmethod
-    def predict(self, *args, **kw) -> object:
-        """Compute predictions at new points; requires a ``keeptrees=True`` fit.
-
-        Returns expected values, i.e., probabilities for binary fits, unless
-        the latent scale is requested with ``type='bart'``.
-        """
-        ...
-
-    @rmethod
-    def extract(self, *args, **kw) -> object:
-        """Return the kept draws for the training (default) or test points.
-
-        Like `predict`, the draws are on the expected-value scale by default.
-        With ``type='trees'`` (requires ``keeptrees=True``), return the tree
-        structures as a data frame instead.
-        """
-        ...
-
-    @rmethod
-    def fitted(self, *args, **kw) -> object:
-        """Return the posterior mean for the training (default) or test points."""
-        ...
-
-
-class bart2(bart):
-    """
-    Python interface to dbarts::bart2.
-
-    A string `formula` argument is converted to an R formula. The named
-    numeric vector forms of the `split_probs` and `proposal_probs` parameters
-    must be specified as dictionaries in Python.
-
-    Unlike `bart`, by default this runs multiple chains without combining
-    them, which adds a leading `nchain` axis to the draws attributes.
-    """
-
-    _rfuncname = 'dbarts::bart2'
-    _named_vectors = ('split_probs', 'proposal_probs')
+    _rfuncname = 'dbarts::dbartsData'
 
     def __init__(self, *args, **kw) -> None:
         args, kw = formula_arg(args, kw)
         super().__init__(*args, **kw)
-
-
-class rbart_vi(bart2):
-    """
-    Python interface to dbarts::rbart_vi.
-
-    A string `formula` argument is converted to an R formula. In addition to
-    the `bart` components, the fit exposes the random-intercept outputs below.
-    """
-
-    _rfuncname = 'dbarts::rbart_vi'
-    _named_vectors = ()
-
-    callback: (
-        Float64[ndarray, 'ndpost values']
-        | Float64[ndarray, 'nchain ndpost values']
-        | None
-    ) = None
-    """Stacked per-draw results of the `callback` function, if given."""
-
-    first_tau: Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip']
-    """Burn-in draws of the random-effects SD."""
-
-    fit: object | None = None
-    """R list of per-chain sampler objects.
-
-    Kept only with ``keepTrees`` or ``keepSampler`` (both on by default).
-    """
-
-    group_by: String[ndarray, ' n']
-    """The training grouping factor, as the level name of each observation."""
-
-    group_by_test: String[ndarray, ' m'] | None = None
-    """The test grouping factor, if given."""
-
-    ranef: Float64[ndarray, 'ndpost g'] | Float64[ndarray, 'nchain ndpost g']
-    """Random-intercept draws for each of the `g` groups."""
-
-    ranef_mean: Float64[ndarray, ' g']
-    """Posterior mean of `ranef` per group."""
-
-    seed: Int32[ndarray, ' state']
-    """R RNG state used by `predict` to draw the effects of unseen groups."""
-
-    tau: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost']
-    """Random-effects SD draws."""
-
-    y: Float64[ndarray, ' n']
-    """The training responses."""
 
 
 class RunSamples(TypedDict):
@@ -297,14 +144,14 @@ class dbarts(RObjectBase):
         args, kw = formula_arg(args, kw)
         super().__init__(*args, **named_vector_args(kw, self._named_vectors))
 
-    @rproperty
-    def control(self) -> RS4:
-        """The control object of the sampler (an R `dbartsControl`)."""
+    @rproperty(wrap=dbartsControl)
+    def control(self) -> dbartsControl:
+        """The control object of the sampler, as a `dbartsControl` wrapper."""
         ...
 
-    @rproperty
-    def data(self) -> RS4:
-        """The data object of the sampler (an R `dbartsData`)."""
+    @rproperty(wrap=dbartsData)
+    def data(self) -> dbartsData:
+        """The data object of the sampler, as a `dbartsData` wrapper."""
         ...
 
     @rproperty
@@ -361,9 +208,7 @@ class dbarts(RObjectBase):
         The R method is broken once the sampler state has been cached; create
         the sampler with ``dbartsControl(updateState=False)`` to use it.
         """
-        new = object.__new__(type(self))
-        new._robject = self._copy(*args, **kw)  # noqa: SLF001, same-class access
-        return new
+        return self._wrap(self._copy(*args, **kw))
 
     @rmethod
     def show(self, *args, **kw) -> object:
@@ -446,29 +291,195 @@ class dbarts(RObjectBase):
         ...
 
 
-class dbartsControl(RObjectBase):
+class bart(RObjectBase):
     """
-    Python interface to dbarts::dbartsControl.
+    Python interface to dbarts::bart.
 
-    Wraps an R S4 object with no components exposed; pass it as the `control`
-    argument of `dbarts`.
-    """
+    The named numeric vector forms of the `splitprobs` and `proposalprobs`
+    parameters must be specified as dictionaries in Python; a named
+    `splitprobs` requires `x_train` to have column names (e.g., a data frame).
 
-    _rfuncname = 'dbarts::dbartsControl'
-
-
-class dbartsData(RObjectBase):
-    """
-    Python interface to dbarts::dbartsData.
-
-    A string `formula` argument is converted to an R formula; the
-    backwards-compatible matrix form passes through unchanged. Wraps an R S4
-    object with no components exposed; pass it to `dbarts.setData` or in
-    place of the `formula` argument of the fitting interfaces.
+    In the attribute shapes below, `ndpost` counts the kept draws
+    (``ndpost / keepevery``). Multiple chains are stacked into the `ndpost`
+    axis when combined (``combinechains=True``, the `bart` default), and add
+    a leading `nchain` axis otherwise.
     """
 
-    _rfuncname = 'dbarts::dbartsData'
+    _rfuncname = 'dbarts::bart'
+    _named_vectors = ('splitprobs', 'proposalprobs')
+
+    binaryOffset: Float64[ndarray, ' n'] | None = None
+    """Per-observation offset on the latent probit scale (binary outcomes only)."""
+
+    call: LangVector
+    """The R call that created the fit.
+
+    With ``keepcall=False`` this is a dummy ``NULL()`` call, not ``None``.
+    """
+
+    first_k: Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip'] | None = None
+    """Burn-in draws of `k` (only when `k` is given a hyperprior)."""
+
+    first_sigma: (
+        Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip'] | None
+    ) = None
+    """Burn-in error-SD draws (continuous outcomes only)."""
+
+    fit: dbarts | None = None
+    """The sampler as a `dbarts` object, kept only with ``keeptrees`` or ``keepsampler``."""
+
+    k: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost'] | None = None
+    """End-node-prior `k` draws (only when `k` is given a hyperprior)."""
+
+    n_chains: int | None = None
+    """Number of MCMC chains; ``None`` when the sampler is kept in `fit`."""
+
+    sigest: float | None = None
+    """Rough residual SD used to set the sigma prior (continuous outcomes only)."""
+
+    sigma: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost'] | None = None
+    """Kept error-SD draws, continuous outcomes only (burn-in is in `first_sigma`)."""
+
+    varcount: Int32[ndarray, 'ndpost p'] | Int32[ndarray, 'nchain ndpost p']
+    """Per-draw count of splits on each variable, summed over trees."""
+
+    y: Float64[ndarray, ' n'] | None = None
+    """The training responses (continuous outcomes only)."""
+
+    yhat_test: (
+        Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m'] | None
+    ) = None
+    """Test-point posterior function draws; ``None`` without test data."""
+
+    yhat_test_mean: Float64[ndarray, ' m'] | None = None
+    """Posterior mean of `yhat_test` (continuous outcomes with test data only)."""
+
+    yhat_train: (
+        Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | None
+    ) = None
+    """Training-point posterior function draws (latent probit scale for binary).
+
+    ``None`` with ``keeptrainfits=False``.
+    """
+
+    yhat_train_mean: Float64[ndarray, ' n'] | None = None
+    """Posterior mean of `yhat_train` (continuous outcomes only)."""
+
+    def __init__(self, *args, **kw) -> None:
+        super().__init__(*args, **named_vector_args(kw, self._named_vectors))
+
+        # fix up attributes
+        # R fills optional components with NULL (e.g. yhat.test without test
+        # data); expose them as None like the components that are dropped
+        for name, value in list(vars(self).items()):
+            if value is robjects.NULL:
+                setattr(self, name, None)
+        if self.n_chains is not None:
+            self.n_chains = self.n_chains.item()
+        if self.sigest is not None:
+            self.sigest = self.sigest.item()
+        if self.fit is not None:
+            self.fit = self._wrap_fit(self.fit)
+
+    @staticmethod
+    def _wrap_fit(fit: RS4) -> dbarts:
+        """Wrap the kept R sampler in the `dbarts` interface."""
+        return dbarts._wrap(fit)  # noqa: SLF001, base-class access
+
+    @rmethod
+    def predict(self, *args, **kw) -> object:
+        """Compute predictions at new points; requires a ``keeptrees=True`` fit.
+
+        Returns expected values, i.e., probabilities for binary fits, unless
+        the latent scale is requested with ``type='bart'``.
+        """
+        ...
+
+    @rmethod
+    def extract(self, *args, **kw) -> object:
+        """Return the kept draws for the training (default) or test points.
+
+        Like `predict`, the draws are on the expected-value scale by default.
+        With ``type='trees'`` (requires ``keeptrees=True``), return the tree
+        structures as a data frame instead.
+        """
+        ...
+
+    @rmethod
+    def fitted(self, *args, **kw) -> object:
+        """Return the posterior mean for the training (default) or test points."""
+        ...
+
+
+class bart2(bart):
+    """
+    Python interface to dbarts::bart2.
+
+    A string `formula` argument is converted to an R formula. The named
+    numeric vector forms of the `split_probs` and `proposal_probs` parameters
+    must be specified as dictionaries in Python.
+
+    Unlike `bart`, by default this runs multiple chains without combining
+    them, which adds a leading `nchain` axis to the draws attributes.
+    """
+
+    _rfuncname = 'dbarts::bart2'
+    _named_vectors = ('split_probs', 'proposal_probs')
 
     def __init__(self, *args, **kw) -> None:
         args, kw = formula_arg(args, kw)
         super().__init__(*args, **kw)
+
+
+class rbart_vi(bart2):
+    """
+    Python interface to dbarts::rbart_vi.
+
+    A string `formula` argument is converted to an R formula. In addition to
+    the `bart` components, the fit exposes the random-intercept outputs below.
+    """
+
+    _rfuncname = 'dbarts::rbart_vi'
+    _named_vectors = ()
+
+    callback: (
+        Float64[ndarray, 'ndpost values']
+        | Float64[ndarray, 'nchain ndpost values']
+        | None
+    ) = None
+    """Stacked per-draw results of the `callback` function, if given."""
+
+    first_tau: Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip']
+    """Burn-in draws of the random-effects SD."""
+
+    fit: tuple[dbarts, ...] | None = None
+    """The per-chain samplers as `dbarts` objects.
+
+    Kept only with ``keepTrees`` or ``keepSampler`` (both on by default).
+    """
+
+    group_by: String[ndarray, ' n']
+    """The training grouping factor, as the level name of each observation."""
+
+    group_by_test: String[ndarray, ' m'] | None = None
+    """The test grouping factor, if given."""
+
+    ranef: Float64[ndarray, 'ndpost g'] | Float64[ndarray, 'nchain ndpost g']
+    """Random-intercept draws for each of the `g` groups."""
+
+    ranef_mean: Float64[ndarray, ' g']
+    """Posterior mean of `ranef` per group."""
+
+    seed: Int32[ndarray, ' state']
+    """R RNG state used by `predict` to draw the effects of unseen groups."""
+
+    tau: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost']
+    """Random-effects SD draws."""
+
+    y: Float64[ndarray, ' n']
+    """The training responses."""
+
+    @staticmethod
+    def _wrap_fit(fit: NamedList) -> tuple[dbarts, ...]:
+        """Wrap the R list of per-chain samplers in the `dbarts` interface."""
+        return tuple(map(dbarts._wrap, fit))  # noqa: SLF001, base-class access
