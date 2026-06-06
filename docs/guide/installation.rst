@@ -54,14 +54,15 @@ R packages
 
 Install `R <https://cran.r-project.org>`_, then install the wrapped packages you
 intend to use. ``BART``, ``dbarts`` and ``bartMachine`` are on CRAN; ``BART3``
-lives on GitHub:
+and ``missBART`` live on GitHub:
 
 .. code-block:: r
 
     install.packages(c("BART", "dbarts", "bartMachine"))
-    # BART3:
+    # BART3 and missBART:
     install.packages("remotes")
     remotes::install_github("rsparapa/bnptools/BART3")
+    remotes::install_github("yongchengoh/missBART")
 
 ``bartMachine`` is a Java package and additionally requires a working Java
 toolchain and ``rJava`` (run ``R CMD javareconf`` after installing a JDK).

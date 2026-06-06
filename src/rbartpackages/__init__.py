@@ -26,7 +26,7 @@
 Python wrappers of R BART packages.
 
 Each wrapped R package has its own submodule (``BART``, ``BART3``,
-``bartMachine``, ``dbarts``); import the one you need, e.g.
+``bartMachine``, ``dbarts``, ``missBART``); import the one you need, e.g.
 ``from rbartpackages import BART3``. Importing a wrapper requires the
 corresponding R package to be installed, because the class docstrings are pulled
 from the R documentation at import time.

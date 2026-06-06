@@ -117,7 +117,7 @@ clean:
 # Leaving GROUP unset runs the whole suite. The matrix in
 # `.github/workflows/tests.yml` lists these same names; keep them in sync.
 GROUP_bart    := tests/test_BART_BART3.py tests/test_base.py tests/test_version.py
-GROUP_others  := tests/test_dbarts.py tests/test_bartMachine.py
+GROUP_others  := tests/test_dbarts.py tests/test_bartMachine.py tests/test_missBART.py
 
 GROUPS := bart others
 
