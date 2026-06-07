@@ -185,9 +185,10 @@ autodoc_default_options = {'member-order': 'bysource'}
 # autosummary
 # generate the per-object stub pages at build time
 autosummary_generate = True
-# the wrappers define their public classes directly, so only document objects
-# that belong to each module (imported helpers live in their own module pages).
-autosummary_imported_members = False
+# the documented modules are the facades, which re-export their `_src`
+# counterpart's public symbols and contain nothing else, so every imported
+# member is a public symbol to document.
+autosummary_imported_members = True
 
 # autodoc-typehints
 typehints_use_rtype = False

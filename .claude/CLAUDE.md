@@ -33,9 +33,9 @@ To check the code you write:
 
 ## Architecture
 
-**Source layout:** `src/rbartpackages/`
+**Source layout:** `src/rbartpackages/`. The implementation lives in `_src/`; each `_src` module has a same-named public facade in `rbartpackages` that re-exports its public symbols (and contains nothing else: the docs documents all imported members of the facades). Inside `_src`, import from `rbartpackages._src.*`, never from the facades.
 
-| Module | Role |
+| Module (in `_src/`) | Role |
 |---|---|
 | `base.py` | `RObjectBase` (base class that calls an R function, converts args, and exposes the result's components as attributes) and the `rmethod` decorator; rpy2 converters for numpy/pandas/polars/jax/dict/bool |
 | `BART.py` | wrappers for the R package `BART` (`gbart`, `mc_gbart`, ...) |
@@ -67,7 +67,7 @@ The R dependencies are pinned in `renv.lock` (regenerate via renv, do not hand-e
     - use dicts as if frozen: `d = dict(d, a=1)` rather than `d['a'] = 1`
     - prefer tuples to lists; make dataclasses frozen unless mutability is needed
     - prefer `if ...: return; else: return` to early returns for readability
-- _src-like layout: don't prepend redundant underscores to private functions (modules already gate the public surface)
+- **_src-like layout:** don't prepend redundant underscores to private functions (the facades already gate the public surface); when adding a public symbol, also re-export it in the facade
 - **WORKAROUND markers:** comments like `# WORKAROUND(jax<99): remove this patch when we bump jax to v99`, enforced by `make lint` against the oldest supported version of the package (also works with python versions and rbartpackages itself)
 
 ## Testing

@@ -32,6 +32,7 @@ import pytest
 from rpy2 import robjects
 
 from rbartpackages import base
+from rbartpackages._src.base import fork_safe_native_threads
 from tests.util import assert_allclose
 
 
@@ -101,7 +102,7 @@ def test_fork_safe_native_threads(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(ctypes, 'CDLL', lambda name: handle)  # noqa: ARG005
 
-    with base.fork_safe_native_threads():
+    with fork_safe_native_threads():
         assert calls == [1]
     assert calls == [1, 4]
     assert omp_get_max_threads.restype is ctypes.c_int

@@ -235,7 +235,7 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
-property-decorators = ["rbartpackages.base.rproperty"]
+property-decorators = ["rbartpackages._src.base.rproperty"]
 
 [tool.ruff.lint.flake8-copyright]
 min-file-size = 1

@@ -1,4 +1,4 @@
-# rbartpackages/src/rbartpackages/BART.py
+# rbartpackages/src/rbartpackages/_src/__init__.py
 #
 # Copyright (c) 2026, The rbartpackages Contributors
 #
@@ -22,17 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package BART."""
+"""Private implementation modules.
 
-# this facade only re-exports the public symbols of its `_src` counterpart
-# ruff: noqa: F401
-
-from rbartpackages._src.BART import (
-    PredictBinary,
-    ProcTime,
-    String,
-    TreeDraws,
-    bartModelMatrix,
-    gbart,
-    mc_gbart,
-)
+The public surface is defined by the same-named facade modules in
+`rbartpackages`, which re-export the public symbols from here.
+"""
