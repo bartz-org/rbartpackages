@@ -43,17 +43,17 @@ from rbartpackages._src.base import (
 
 
 class TreeDraws(TypedDict):
-    """Type of the `treedraws` attribute of `mc_gbart`."""
+    """Type of the `mc_gbart.treedraws` attribute."""
 
     cutpoints: dict[int | str, Float64[ndarray, ' numcut[i]']]
     """Per-variable grid of candidate split points, keyed by column index or name."""
 
     trees: str
-    """Posterior tree ensemble serialized in BART's text format (read by `predict`)."""
+    """Posterior tree ensemble serialized in BART's text format (read by `mc_gbart.predict`)."""
 
 
 class PredictBinary(TypedDict):
-    """Type of `predict`'s return value for binary (`pbart`/`lbart`) fits."""
+    """Type of `mc_gbart.predict`'s return value for binary ('pbart'/'lbart') fits."""
 
     yhat_test: Float64[ndarray, 'ndpost m']
     """Posterior latent-function draws at the test points."""
@@ -81,7 +81,7 @@ class String(AbstractDtype):
 
 
 class ProcTime(NamedTuple):
-    """Python representation of the output of R's `proc.time`."""
+    """Python representation of the output of R's ``proc.time``."""
 
     user_self: float
     """CPU seconds charged to the R process in user mode."""
@@ -93,7 +93,7 @@ class ProcTime(NamedTuple):
     """Wall-clock seconds elapsed."""
 
     user_child: float
-    """User-mode CPU seconds of forked child processes (`mc.gbart` workers)."""
+    """User-mode CPU seconds of forked child processes (``mc.gbart`` workers)."""
 
     sys_child: float
     """System-mode CPU seconds of forked child processes."""
@@ -261,7 +261,7 @@ class mc_gbart(RObjectBase):
         Float64[ndarray, ' nskip+ndpost*keepevery']
         | Float64[ndarray, 'nskip+ndpost*keepevery/mc_cores mc_cores']
     )
-    """Per-iteration Metropolis-Hastings acceptance rate (per chain for `mc.gbart`).
+    """Per-iteration Metropolis-Hastings acceptance rate (per chain for ``mc.gbart``).
 
     Recorded for every MCMC iteration, including the thinned-away ones (unlike
     `sigma`, which keeps only burn-in plus retained draws).
@@ -301,7 +301,7 @@ class mc_gbart(RObjectBase):
     """Posterior mean of `prob_train`."""
 
     proc_time: ProcTime
-    """Timing of the fit, from R's `proc.time`."""
+    """Timing of the fit, from R's ``proc.time``."""
 
     rho: float
     """Concentration of the sparse (DART) prior; defaults to ``sum(1/grp)``."""
@@ -312,7 +312,7 @@ class mc_gbart(RObjectBase):
     sigest: float | None = None
     """Rough residual SD used to set the sigma prior (continuous only).
 
-    ``None`` for binary outcomes; ``nan`` when the `mc.gbart` ``mc_cores > 1``
+    ``None`` for binary outcomes; ``nan`` when the ``mc.gbart`` ``mc_cores > 1``
     bug overwrites it with a logical missing value.
     """
 
@@ -321,7 +321,7 @@ class mc_gbart(RObjectBase):
         | Float64[ndarray, 'nskip+ndpost/mc_cores mc_cores']
         | None
     ) = None
-    """Error-SD draws including burn-in, continuous only (per chain for `mc.gbart`)."""
+    """Error-SD draws including burn-in, continuous only (per chain for ``mc.gbart``)."""
 
     sigma_: Float64[ndarray, ' ndpost'] | None = None
     """Kept `sigma` draws with burn-in dropped; ``None`` without burn-in."""
@@ -353,10 +353,10 @@ class mc_gbart(RObjectBase):
     yhat_test: Float64[ndarray, 'ndpost m']
     """Test-point posterior function draws (latent scale for binary).
 
-    Always present: R's `cgbart` allocates it unconditionally, so without test
-    data it is an empty ``(ndpost, 0)`` array rather than ``None`` (unlike the
-    derived `yhat_test_mean`/`lower`/`upper`, which R only fills when test data
-    is given).
+    Always present: R's ``cgbart`` allocates it unconditionally, so without
+    test data it is an empty ``(ndpost, 0)`` array rather than ``None``
+    (unlike the derived `yhat_test_mean`/`yhat_test_lower`/`yhat_test_upper`,
+    which R only fills when test data is given).
     """
 
     yhat_test_lower: Float64[ndarray, ' m'] | None = None

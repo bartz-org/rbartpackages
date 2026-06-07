@@ -115,7 +115,7 @@ class bartMachine(RObjectBase):
     """Whether the Java backend flushed internal indices to save memory."""
 
     impute_missingness_with_rf_impute: bool
-    """Whether missing training entries got `randomForest::rfImpute` imputations added."""
+    """Whether missing training entries got ``randomForest::rfImpute`` imputations added."""
 
     impute_missingness_with_x_j_bar_for_lm: bool
     """Whether the linear model behind `sig_sq_est` imputed missing entries with column averages."""
@@ -190,7 +190,7 @@ class bartMachine(RObjectBase):
     """In-sample root-mean-square error (regression with `run_in_sample` only)."""
 
     run_in_sample: bool
-    """Whether the in-sample (`*_train`) outputs were computed."""
+    """Whether the in-sample (``*_train``) outputs were computed."""
 
     s_sq_y: str
     """How `sig_sq_est` is estimated, ``'mse'`` (linear model) or ``'var'`` (sample variance)."""

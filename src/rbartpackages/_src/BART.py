@@ -43,17 +43,17 @@ from rbartpackages._src.base import (
 
 
 class TreeDraws(TypedDict):
-    """Type of the `treedraws` attribute of `mc_gbart`."""
+    """Type of the `mc_gbart.treedraws` attribute."""
 
     cutpoints: dict[int | str, Float64[ndarray, ' numcut[i]']]
     """Per-variable grid of candidate split points, keyed by column index or name."""
 
     trees: str
-    """Posterior tree ensemble serialized in BART's text format (read by `predict`)."""
+    """Posterior tree ensemble serialized in BART's text format (read by `mc_gbart.predict`)."""
 
 
 class PredictBinary(TypedDict):
-    """Type of `predict`'s return value for binary (`pbart`/`lbart`) fits."""
+    """Type of `mc_gbart.predict`'s return value for binary ('pbart'/'lbart') fits."""
 
     yhat_test: Float64[ndarray, 'ndpost m']
     """Posterior latent-function draws at the test points."""
@@ -75,7 +75,7 @@ class String(AbstractDtype):
 
 
 class ProcTime(NamedTuple):
-    """Python representation of the output of R's `proc.time`."""
+    """Python representation of the output of R's ``proc.time``."""
 
     user_self: float
     """CPU seconds charged to the R process in user mode."""
@@ -87,7 +87,7 @@ class ProcTime(NamedTuple):
     """Wall-clock seconds elapsed."""
 
     user_child: float
-    """User-mode CPU seconds of forked child processes (`mc.gbart` workers)."""
+    """User-mode CPU seconds of forked child processes (``mc.gbart`` workers)."""
 
     sys_child: float
     """System-mode CPU seconds of forked child processes."""
@@ -199,7 +199,7 @@ class mc_gbart(RObjectBase):
         when handing the data to its workers.
     hostname
         Whether to record the hostname the fit runs on (per chain for
-        `mc.gbart`), to track the nodes of a cluster.
+        ``mc.gbart``), to track the nodes of a cluster.
     mc_cores
         Number of MCMC chains, run in forked R processes, capped at the
         detected core count. `gbart` runs a single chain in-process and
@@ -229,7 +229,7 @@ class mc_gbart(RObjectBase):
     """Log pseudo-marginal likelihood; unstable for BART.
 
     Always computed, even without burn-in. Miscomputed by R for binary
-    `mc.gbart` fits with ``mc_cores > 1`` (the chains' probabilities are not
+    ``mc.gbart`` fits with ``mc_cores > 1`` (the chains' probabilities are not
     combined before the computation).
     """
 
@@ -245,7 +245,7 @@ class mc_gbart(RObjectBase):
     prob_test: None | Float64[ndarray, 'ndpost/mc_cores m'] = None
     """Test-point success-probability draws (binary outcomes only).
 
-    `mc.gbart` with ``mc_cores > 1`` forgets to combine the chains, leaving
+    ``mc.gbart`` with ``mc_cores > 1`` forgets to combine the chains, leaving
     only the first chain's draws.
     """
 
@@ -255,7 +255,7 @@ class mc_gbart(RObjectBase):
     prob_train: None | Float64[ndarray, 'ndpost/mc_cores n'] = None
     """Training-point success-probability draws (binary outcomes only).
 
-    `mc.gbart` with ``mc_cores > 1`` forgets to combine the chains, leaving
+    ``mc.gbart`` with ``mc_cores > 1`` forgets to combine the chains, leaving
     only the first chain's draws.
     """
 
@@ -263,12 +263,12 @@ class mc_gbart(RObjectBase):
     """Posterior mean of `prob_train`."""
 
     proc_time: ProcTime
-    """Timing of the fit, from R's `proc.time`."""
+    """Timing of the fit, from R's ``proc.time``."""
 
     rm_const: Int32[ndarray, '<=p']
     """0-based indices of the `x_train` columns kept (constant columns dropped).
 
-    `mc.gbart` with ``mc_cores=1`` relabels the kept columns to ``0 .. kept-1``,
+    ``mc.gbart`` with ``mc_cores=1`` relabels the kept columns to ``0 .. kept-1``,
     losing which original columns were dropped.
     """
 
@@ -277,7 +277,7 @@ class mc_gbart(RObjectBase):
         | Float64[ndarray, 'nskip+ndpost*keepevery/mc_cores mc_cores']
         | None
     ) = None
-    """Error-SD draws, continuous outcomes only (per chain for `mc.gbart`).
+    """Error-SD draws, continuous outcomes only (per chain for ``mc.gbart``).
 
     One draw per MCMC iteration: burn-in and the thinned-away iterations are
     included.
@@ -304,10 +304,10 @@ class mc_gbart(RObjectBase):
     yhat_test: Float64[ndarray, 'ndpost m']
     """Test-point posterior function draws (latent scale for binary).
 
-    Always present: R's `cgbart` allocates it unconditionally, so without test
-    data it is an empty array rather than ``None`` (with the rows of the first
-    chain only for `mc.gbart`, which combines the chains just when there is
-    test data).
+    Always present: R's ``cgbart`` allocates it unconditionally, so without
+    test data it is an empty array rather than ``None`` (with the rows of the
+    first chain only for ``mc.gbart``, which combines the chains just when
+    there is test data).
     """
 
     yhat_test_mean: Float64[ndarray, ' m'] | None = None
@@ -489,7 +489,7 @@ class mc_gbart(RObjectBase):
 
         Notes
         -----
-        For `mc.gbart` fits with ``mc_cores > 1`` that dropped constant
+        For ``mc.gbart`` fits with ``mc_cores > 1`` that dropped constant
         columns, R miscounts the kept columns and fails to update the
         header of the serialized ensemble, so only the first chain's draws
         are returned.

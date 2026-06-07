@@ -156,7 +156,7 @@ class dbarts(RObjectBase):
 
     @rproperty
     def model(self) -> RS4:
-        """The model (priors) object of the sampler (an R `dbartsModel`)."""
+        """The model (priors) object of the sampler (an R ``dbartsModel``)."""
         ...
 
     @rproperty

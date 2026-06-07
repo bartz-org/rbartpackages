@@ -114,8 +114,9 @@ DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
 class DataFrame(Protocol):
     """Duck type of the dataframe arguments accepted by the wrappers.
 
-    Both `pandas.DataFrame` and `polars.DataFrame` match; they are converted
-    to R data frames, with categorical columns becoming factors.
+    Both `pandas.DataFrame` and :doc:`polars.DataFrame
+    <polars:reference/dataframe/index>` match; they are converted to R data
+    frames, with categorical columns becoming factors.
     """
 
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
@@ -187,7 +188,7 @@ class RObjectBase:
     """
     Base class for Python wrappers of R objects creators.
 
-    Subclasses should define the class attribute `_rfuncname`, and declare
+    Subclasses should define the class attribute ``_rfuncname``, and declare
     stub methods decorated with `rmethod`.
 
     _rfuncname : str
@@ -195,7 +196,8 @@ class RObjectBase:
         called with the initialization arguments, converted to R objects, and is
         expected to return an R object. The attributes of the R object are
         converted to equivalent Python values and set as attributes of the
-        Python object. The R object itself is assigned to the member `_robject`.
+        Python object. The R object itself is assigned to the member
+        ``_robject``.
     """
 
     _converter = (
@@ -367,9 +369,9 @@ def rproperty(
 ) -> property | Callable[[Callable], property]:
     """Automatically implement a read-only property using the corresponding R field.
 
-    Unlike the attributes snapshotted by `RObjectBase.__init__`, the field is
-    extracted from the R object at each access, so it tracks mutable objects
-    such as reference-class instances.
+    Unlike the attributes `RObjectBase` snapshots at initialization, the field
+    is extracted from the R object at each access, so it tracks mutable
+    objects such as reference-class instances.
 
     Parameters
     ----------

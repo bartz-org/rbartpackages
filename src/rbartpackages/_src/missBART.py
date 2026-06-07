@@ -46,7 +46,7 @@ class missBART2(RObjectBase):
 
     If `x_predict` is not specified, the wrapper passes ``predict=False`` and a
     placeholder `x_predict`, because the R code crashes on its own default
-    ``x_predict = c()`` (`as.matrix(NULL)` is an error). Explicitly passing
+    ``x_predict = c()`` (``as.matrix(NULL)`` is an error). Explicitly passing
     ``predict=True`` without `x_predict` raises `ValueError`.
     """
 
@@ -101,7 +101,8 @@ class missBART2(RObjectBase):
     """Posterior draws of the residual variance of the BART regression, on
     the original scale of `y`. Shape ``(iters, 1, 1)`` for univariate `y`;
     for multivariate `y` the full covariance matrix ``(iters, p, p)`` with
-    `scale=False`, but only its diagonal ``(iters, p)`` with `scale=True`."""
+    ``scale=False``, but only its diagonal ``(iters, p)`` with
+    ``scale=True``."""
 
     y_impute: Float64[ndarray, 'iters n_missing']
     """Posterior draws of the imputed values for the missing entries of
@@ -117,12 +118,13 @@ class missBART2(RObjectBase):
 
     new_y_post: Float64[ndarray, 'iters n_predict p'] | None = None
     """Posterior predictive draws (incl. error term) at the out-of-sample
-    covariates `x_predict`, on the original scale. ``None`` if `predict=False`
-    or `x_predict` was not supplied. With `scale=False` the values are garbled
-    because the upstream code applies the un-scaling anyway."""
+    covariates `x_predict`, on the original scale. ``None`` if
+    ``predict=False`` or `x_predict` was not supplied. With ``scale=False``
+    the values are garbled because the upstream code applies the un-scaling
+    anyway."""
 
     pdp_out: Any | None = None
-    """Partial dependence plot output. ``None`` unless `make_pdp=True` and
+    """Partial dependence plot output. ``None`` unless ``make_pdp=True`` and
     `y` is univariate."""
 
     y_pred: list
