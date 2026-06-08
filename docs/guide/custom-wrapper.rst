@@ -34,10 +34,10 @@ First install the R package to wrap, e.g. ``BART`` from CRAN:
 
     install.packages("BART")
 
-Then subclass `~rbartpackages.base.RObjectBase`, setting ``_rfuncname`` to the
-R function to call. R methods of the result are bound with
-`~rbartpackages.base.rmethod`; the decorated body is discarded, so a stub
-suffices:
+Then subclass `~rbartpackages.base.RObjectBase`, setting
+`~rbartpackages.base.RObjectBase._rfuncname` to the R function to call. R
+methods of the result are bound with `~rbartpackages.base.rmethod`; the
+decorated body is discarded, so a stub suffices:
 
 .. code-block:: python
 

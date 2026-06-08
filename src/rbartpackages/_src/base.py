@@ -188,16 +188,8 @@ class RObjectBase:
     """
     Base class for Python wrappers of R objects creators.
 
-    Subclasses should define the class attribute ``_rfuncname``, and declare
+    Subclasses should define the class attribute `_rfuncname`, and declare
     stub methods decorated with `rmethod`.
-
-    _rfuncname : str
-        An R function in the format ``'<package>::<function>``. The function is
-        called with the initialization arguments, converted to R objects, and is
-        expected to return an R object. The attributes of the R object are
-        converted to equivalent Python values and set as attributes of the
-        Python object. The R object itself is assigned to the member
-        ``_robject``.
     """
 
     _converter = (
@@ -232,6 +224,15 @@ class RObjectBase:
         return {key: cls._py2r(value) for key, value in kw.items()}
 
     _rfuncname: str = NotImplemented
+    """R function to call, as ``'<package>::<function>'``.
+
+    Called with the initialization arguments converted to R objects; the R
+    object it returns is stored in `_robject`, and that object's named
+    components are converted to Python values and set as attributes.
+    """
+
+    _robject: object
+    """The R object returned by `_rfuncname`, whose components become attributes."""
 
     @property
     def _library(self) -> str:
@@ -266,7 +267,7 @@ class RObjectBase:
         return func(*self._args2r(args), **self._kw2r(kw))
 
     def _set_attrs_from_robject(self) -> None:
-        """Set the named components of `self._robject` as Python attributes."""
+        """Set the named components of `_robject` as Python attributes."""
         if self._has_named_components(self._robject):
             for s, v in self._robject.items():
                 setattr(self, s.replace('.', '_'), self._r2py(v))
