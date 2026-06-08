@@ -105,13 +105,17 @@ repos:
         name: forbid stray colon in first line of attribute docstrings
         # A lone colon in the first line of an attribute docstring makes sphinx
         # napoleon split it into a `:type:` field, leaking a stray "Type: <text
-        # before the colon>" into the html. Matches an attribute assignment or
-        # annotation line (one not ending in `:`, i.e. not a def/class header)
-        # followed by a one-line `"""..."""` whose first colon is a lone `:` (not
-        # `::`) sitting outside any ``code`` span or :role:`target`. Reword the
-        # line to drop the colon (a comma or semicolon renders the same).
+        # before the colon>" into the html. Napoleon only inspects the docstring's
+        # first line, so the match runs from the opening `"""` to the first newline
+        # or the closing `"""` (whichever comes first), one-line and multi-line
+        # docstrings alike. Matches an attribute assignment or annotation line (one
+        # not ending in `:`, i.e. not a def/class header) followed by a same-indent
+        # `"""` whose first line holds a lone `:` (not `::`) outside any ``code``
+        # span or :role:`target`, with real text after it (a colon at end of line
+        # is harmless: napoleon then keeps it in the description). Reword to drop
+        # the colon (a comma or semicolon renders the same).
         language: pygrep
-        entry: '^(?P<i>[ \t]+)\S[^\n]*[^\n:\s]\n(?P=i)"""(?:``[^`]*``|:[A-Za-z0-9_+.:-]+:`[^`\n]+`|`[^`\n]+`|[^:`\n])*:(?!:)(?![A-Za-z0-9_+.:-]+:`)[ \t]*\S[^\n]*"""'
+        entry: '^(?P<i>[ \t]+)\S[^\n]*[^\n:\s]\n(?P=i)"""(?:``[^`]*``|:[A-Za-z0-9_+.:-]+:`[^`\n]+`|`[^`\n]+`|(?!""")[^:`\n])*:(?!:)(?![A-Za-z0-9_+.:-]+:`)[ \t]*(?!""")\S'
         args: [--multiline]
         types: [python]
       - id: forbid-lam-lamda
