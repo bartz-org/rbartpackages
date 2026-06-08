@@ -22,7 +22,37 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package dbarts."""
+"""Wrapper for the R package dbarts (on CRAN).
+
+Model fitting
+-------------
+
+.. autosummary::
+    :toctree:
+
+    bart
+    bart2
+    rbart_vi
+
+Low-level sampler
+-----------------
+
+.. autosummary::
+    :toctree:
+
+    dbarts
+    dbartsControl
+    dbartsData
+
+Supporting types
+----------------
+
+.. autosummary::
+    :toctree:
+
+    RunSamples
+    String
+"""
 
 # this facade only re-exports the public symbols of its `_src` counterpart
 # ruff: noqa: F401

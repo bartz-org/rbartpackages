@@ -22,7 +22,36 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package BART3."""
+"""Wrapper for the R package BART3 (`rsparapa/bnptools <https://github.com/rsparapa/bnptools>`_, ``BART3`` subdirectory).
+
+Model fitting
+-------------
+
+.. autosummary::
+    :toctree:
+
+    gbart
+    mc_gbart
+
+Data preprocessing
+------------------
+
+.. autosummary::
+    :toctree:
+
+    bartModelMatrix
+
+Supporting types
+----------------
+
+.. autosummary::
+    :toctree:
+
+    TreeDraws
+    PredictBinary
+    ProcTime
+    String
+"""
 
 # this facade only re-exports the public symbols of its `_src` counterpart
 # ruff: noqa: F401

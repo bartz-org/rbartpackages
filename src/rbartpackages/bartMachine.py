@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package bartMachine.
+"""Wrapper for the R package bartMachine (on CRAN).
 
 bartMachine wants data frames, so this module requires the ``pandas`` extra.
 
@@ -30,6 +30,41 @@ Importing this module loads bartMachine's R namespace, which starts the JVM.
 JVM options can only be set before that: the import defaults the heap size
 limit to 5 GB and enables the Vector API module bartMachine uses on JDK 16+;
 to customize, set R's ``java.parameters`` option before the first import.
+
+Model fitting
+-------------
+
+.. autosummary::
+    :toctree:
+
+    bartMachine
+
+Posterior queries
+-----------------
+
+.. autosummary::
+    :toctree:
+
+    bart_machine_get_posterior
+    get_sigsqs
+
+Parallelism
+-----------
+
+.. autosummary::
+    :toctree:
+
+    bart_machine_num_cores
+    set_bart_machine_num_cores
+
+Supporting types
+----------------
+
+.. autosummary::
+    :toctree:
+
+    Posterior
+    String
 """
 
 # this facade only re-exports the public symbols of its `_src` counterpart

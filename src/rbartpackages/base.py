@@ -22,7 +22,34 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Base machinery to wrap R functions, shared by the package wrappers."""
+"""Base machinery to wrap R functions, shared by the package wrappers.
+
+Base class
+----------
+
+.. autosummary::
+    :toctree:
+
+    RObjectBase
+
+Wrapper decorators
+------------------
+
+.. autosummary::
+    :toctree:
+
+    rfunction
+    rmethod
+    rproperty
+
+Protocols
+---------
+
+.. autosummary::
+    :toctree:
+
+    DataFrame
+"""
 
 # this facade only re-exports the public symbols of its `_src` counterpart
 # ruff: noqa: F401

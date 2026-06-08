@@ -25,11 +25,6 @@
 Reference
 =========
 
-API reference for rbartpackages. Each module page lists its public objects in a
-summary table; follow a link for the dedicated page of an object. Building this
-reference requires the corresponding R packages to be installed, because the
-class docstrings are pulled from the R documentation at import time.
-
 Wrapped packages
 ----------------
 
