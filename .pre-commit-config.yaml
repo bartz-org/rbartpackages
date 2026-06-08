@@ -101,6 +101,19 @@ repos:
         entry: '^(?P<i>[ \t]*)Returns[ \t]*\n(?P=i)-+[ \t]*\n(?P=i)(?!""")\S[^\n]*\n(?:[ \t]*\n)*(?P=i)(?!""")(?!\w+[ \t]*\n(?P=i)-+[ \t]*$)\S'
         args: [--multiline]
         types: [python]
+      - id: forbid-napoleon-type-colon
+        name: forbid stray colon in first line of attribute docstrings
+        # A lone colon in the first line of an attribute docstring makes sphinx
+        # napoleon split it into a `:type:` field, leaking a stray "Type: <text
+        # before the colon>" into the html. Matches an attribute assignment or
+        # annotation line (one not ending in `:`, i.e. not a def/class header)
+        # followed by a one-line `"""..."""` whose first colon is a lone `:` (not
+        # `::`) sitting outside any ``code`` span or :role:`target`. Reword the
+        # line to drop the colon (a comma or semicolon renders the same).
+        language: pygrep
+        entry: '^(?P<i>[ \t]+)\S[^\n]*[^\n:\s]\n(?P=i)"""(?:``[^`]*``|:[A-Za-z0-9_+.:-]+:`[^`\n]+`|`[^`\n]+`|[^:`\n])*:(?!:)(?![A-Za-z0-9_+.:-]+:`)[ \t]*\S[^\n]*"""'
+        args: [--multiline]
+        types: [python]
       - id: forbid-lam-lamda
         name: forbid `lam`/`lamda` identifier (use `lambda_` per PEP 8)
         language: pygrep

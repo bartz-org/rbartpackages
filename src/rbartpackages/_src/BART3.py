@@ -330,7 +330,7 @@ class mc_gbart(RObjectBase):
     """Mean of `sigma_`; falls back to `sigest` when no draws are kept."""
 
     treedraws: TreeDraws
-    """Sampled trees: per-variable cutpoint grid and the serialized ensemble."""
+    """Sampled trees, as a per-variable cutpoint grid and the serialized ensemble."""
 
     varcount: Int32[ndarray, 'ndpost p']
     """Per-draw count of splits on each variable, summed over trees."""
@@ -655,7 +655,7 @@ class bartModelMatrix(RObjectBase):
     _rfuncname = 'BART3::bartModelMatrix'
 
     X: Float64[ndarray, 'N p']
-    """Design matrix: vectors and data frames coerced to numeric, factors expanded to indicators."""
+    """Design matrix, with vectors and data frames coerced to numeric and factors expanded to indicators."""
 
     numcut: Int32[ndarray, ' p']
     """Number of cutpoints chosen per column."""
