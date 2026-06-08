@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project
 
-rbartpackages — Python wrappers of R BART (Bayesian Additive Regression Trees) packages, built on `rpy2`. It wraps `BART`, `BART3`, `bartMachine`, and `dbarts` behind a uniform interface: arguments are converted to R, the fitted R object's components become Python attributes, and each wrapper class's docstring is augmented with the upstream R documentation (fetched at import time).
+rbartpackages — Python wrappers of R BART (Bayesian Additive Regression Trees) packages, built on `rpy2`. It wraps `BART`, `BART3`, `bartMachine`, `dbarts`, and `missBART` behind a uniform interface: arguments are converted to R, the fitted R object's components become Python attributes, and each wrapper class's docstring is augmented with the upstream R documentation (fetched at import time).
 
 ## Commands
 
@@ -42,6 +42,7 @@ To check the code you write:
 | `BART3.py` | wrappers for the R package `BART3` |
 | `bartMachine.py` | wrapper for the R package `bartMachine` (needs Java) |
 | `dbarts.py` | wrappers for the R package `dbarts` (`bart`, `bart2`, `rbart_vi`, ...) |
+| `missBART.py` | wrapper for the R package `missBART` (`missBART2`) |
 
 Importing a wrapper submodule requires the corresponding R package to be installed (the R documentation is pulled at class-definition time). The top-level `import rbartpackages` does not import the submodules, so it works without R.
 
