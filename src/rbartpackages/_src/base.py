@@ -65,8 +65,19 @@ else:
         df = df.to_pandas()
         return pandas2ri.py2rpy(df)
 
+    def r_to_polars(df: object) -> pl.DataFrame:
+        """Convert an R data frame to polars through pandas.
+
+        Registered so that, when polars is installed, it wins over the pandas
+        converter for R data frames (the converters are summed with polars
+        after pandas, so its later registration takes precedence). polars has
+        no row index, so an R data frame's row names are dropped.
+        """
+        return pl.from_pandas(pandas2ri.rpy2py(df))
+
     POLARS_CONVERTER.py2rpy.register(pl.DataFrame, polars_to_r)
     POLARS_CONVERTER.py2rpy.register(pl.Series, polars_to_r)
+    POLARS_CONVERTER.rpy2py.register(robjects.vectors.DataFrame, r_to_polars)
 
 # converter for jax
 JAX_CONVERTER = conversion.Converter('jax')

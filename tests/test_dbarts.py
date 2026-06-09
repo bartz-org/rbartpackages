@@ -132,7 +132,8 @@ def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
     assert_close_matrices(bart.fitted(), draws.mean(axis=0), rtol=1e-7)
 
     trees = bart.extract(type='trees')
-    assert isinstance(trees, pd.DataFrame)
+    # the tree structure comes back as a dataframe (polars if installed, else
+    # pandas); both expose the column names through `.columns`
     assert {'sample', 'tree', 'n', 'var', 'value'} <= set(trees.columns)
 
 
