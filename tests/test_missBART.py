@@ -24,7 +24,9 @@
 
 """Tests for the missBART wrapper."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from inspect import Parameter, signature
 
 import numpy as np
 import pytest
@@ -184,3 +186,115 @@ def test_predict_without_x_predict(rng: np.random.Generator) -> None:
     data = make_data(rng, p=1)
     with pytest.raises(ValueError, match='x_predict'):
         fit_missBART2(data, rng, predict=True)
+
+
+def test_forwards_hyperparameter_kwargs(rng: np.random.Generator) -> None:
+    """Extra keyword arguments reach R's ``...`` (``tree_list`` / ``hypers_list``).
+
+    ``df`` and ``prior_alpha`` are not `missBART2` formals, so they can only
+    reach R through its ``...``; the fit completing proves they were forwarded.
+    """
+    data = make_data(rng, p=1)
+    fit = fit_missBART2(data, rng, df=5, prior_alpha=0.9)
+    assert fit.y_post.shape == (ITERS, *data.y.shape)
+
+
+def test_explicit_tree_prior_params(rng: np.random.Generator) -> None:
+    """`tree_prior_params` accepts a complete R list passed as a dict."""
+    data = make_data(rng, p=1)
+    fit = fit_missBART2(
+        data,
+        rng,
+        tree_prior_params=dict(
+            prior_alpha=0.95, prior_beta=2.0, min_node=1, max_attempt=1
+        ),
+    )
+    assert fit.y_post.shape == (ITERS, *data.y.shape)
+
+
+def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
+    """Evaluate the argument defaults of an R function in isolation.
+
+    Defaults that are NULL, missing, or that cannot be evaluated standalone
+    (e.g. because they reference other arguments) are omitted.
+    """
+    rdefaults = robjects.r(f"""
+        Filter(
+            Negate(is.null),
+            lapply(
+                formals({rfuncname}),
+                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
+            )
+        )
+    """)
+    return {
+        name: np.asarray(value)
+        for name, value in zip(rdefaults.names, rdefaults, strict=True)
+    }
+
+
+def mapped_params(obj: Callable) -> dict[str, Parameter]:
+    """Return the named parameters of `obj`, keyed by R name.
+
+    missBART2's R arguments already use Python-style underscores, so the names
+    map across verbatim. Skips ``self`` and the ``**kwargs`` catch-all, which
+    have no R formal counterpart.
+    """
+    variadic = {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}
+    return {
+        name.removesuffix('_'): param
+        for name, param in signature(obj).parameters.items()
+        if name != 'self' and param.kind not in variadic
+    }
+
+
+def has_var_keyword(obj: Callable) -> bool:
+    """Whether `obj` has a ``**kwargs`` catch-all (forwarding R's ``...``)."""
+    return any(
+        param.kind is Parameter.VAR_KEYWORD
+        for param in signature(obj).parameters.values()
+    )
+
+
+# vestigial R arguments accepted but never used by the missBART2 implementation,
+# so deliberately not exposed (they stay reachable through **hyperparams)
+UNEXPOSED = {
+    'true_trees_data',
+    'true_trees_missing',
+    'true_change_points',
+    'true_change_points_miss',
+}
+
+
+def test_signature_defaults_match_r() -> None:
+    """The explicit `missBART2` signature stays in sync with the R function.
+
+    Every literal default in the Python signature must match its R counterpart,
+    every R argument must be exposed or deliberately unexposed, and R's ``...``
+    must be forwarded by a ``**kwargs`` catch-all, so that an upstream update
+    that changes a default or adds an argument fails here instead of silently
+    diverging.
+    """
+    rfuncname = 'missBART::missBART2'
+    params = mapped_params(missBART.missBART2)
+    rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+    # R's `...` is forwarded by a **kwargs catch-all, not a named parameter
+    assert ('...' in rnames) == has_var_keyword(missBART.missBART2)
+    rnames -= {'...'}
+    assert params.keys() <= rnames
+    assert rnames - params.keys() == UNEXPOSED
+
+    rdefaults = evaluated_r_formals(rfuncname)
+    for name, param in params.items():
+        if param.default is Parameter.empty or param.default is None:
+            continue  # required, or deferred to R
+        # a literal Python default needs a comparable R default
+        assert name in rdefaults, name
+        # strict=False: R types its literals loosely (TRUE vs 1, 2L vs 2), so
+        # compare values only
+        assert_array_equal(
+            np.ravel(param.default),
+            np.ravel(rdefaults[name]),
+            strict=False,
+            err_msg=name,
+        )

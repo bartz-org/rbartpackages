@@ -24,8 +24,6 @@
 
 """Implementation of `rbartpackages.missBART`."""
 
-# ruff: noqa: ANN002, ANN003
-
 from typing import Any
 
 import numpy as np
@@ -33,21 +31,162 @@ from jaxtyping import Bool, Float64, Shaped
 from numpy import ndarray
 from rpy2.rlike.container import NamedList
 
-from rbartpackages._src.base import RObjectBase
+# WORKAROUND(python<3.11): import TypedDict, Unpack from typing
+from typing_extensions import TypedDict, Unpack
+
+from rbartpackages._src.base import RObjectBase, drop_none
 
 
 def _values(nl: NamedList) -> list[Any]:
     return [it.value for it in nl.items()]
 
 
+class TreePriorParams(TypedDict, total=False):
+    """Tree-prior parameters, the keys of R's ``tree_list``.
+
+    The prior probability of splitting a node at depth ``d`` is
+    ``prior_alpha * (1 + d) ** -prior_beta``. Entries left out fall back to
+    ``tree_list``'s own defaults, noted below.
+    """
+
+    prior_alpha: float
+    """Base of the node-splitting probability, in ``(0, 1)``. Default 0.95."""
+
+    prior_beta: float
+    """Power of the node-splitting probability, nonnegative. Default 2."""
+
+    min_node: int
+    """Minimum number of observations per leaf, raised to ``p + 1`` internally. Default 1."""
+
+    max_attempt: int
+    """Number of attempts to propose a valid split before giving up. Default 1."""
+
+
+class Hypers(TypedDict, total=False):
+    """Prior hyperparameters, the keys of R's ``hypers_list``.
+
+    Entries left out fall back to ``hypers_list``'s own defaults, noted below;
+    `kappa`, `alpha` and `V` also accept ``None`` to request their data-based
+    default explicitly.
+    """
+
+    mu0: float
+    """Prior mean of the tree-leaf parameters. Default 0."""
+
+    kappa: float | None
+    """Prior precision of the regression-tree leaf parameters. Default ``4 * qnorm(0.975) ** 2 * n_reg_trees``."""
+
+    alpha: float | None
+    """Wishart degrees of freedom of the residual precision, multivariate `y` only. Default `df`."""
+
+    V: Float64[ndarray, 'p p'] | None
+    """Wishart scale matrix of the residual precision, multivariate `y` only. Default data-based."""
+
+    df: float
+    """Degrees of freedom of the error-variance prior. Default 10."""
+
+    q: float
+    """Prior quantile of the error variance at the data-based estimate. Default 0.75."""
+
+    tau_b: float
+    """Unused by `missBART2`. Default 100."""
+
+
+class Hyperparams(TreePriorParams, Hypers, total=False):
+    """Union of `TreePriorParams` and `Hypers`, forwarded through ``**hyperparams``."""
+
+
 class missBART2(RObjectBase):
     """
-    Python interface to missBART::missBART2.
+    Fit BART to outcomes with missing entries, imputing them.
 
+    Python interface to R's ``missBART::missBART2``. It jointly fits a
+    regression BART to the (possibly multivariate) outcome `y` and a probit
+    BART to its missingness pattern, imputing the missing entries of `y` along
+    the MCMC. Missing entries of the predictors `x` are handled by augmenting
+    `x` with binary missingness-indicator columns. Arguments left to ``None``
+    are omitted from the R call, so R computes its own defaults, described
+    below.
+
+    Parameters
+    ----------
+    x
+        Predictor matrix; rows are observations. Missing entries, marked with
+        ``NaN``, augment it with one binary missingness-indicator column per
+        predictor (they are not imputed, unlike those of `y`).
+    y
+        Outcome matrix (one column per response) or vector; ``NaN`` marks the
+        entries to impute.
+    x_predict
+        Out-of-sample predictors at which to draw the posterior predictive; if
+        omitted, no out-of-sample predictions are made (see Notes).
+    n_reg_trees
+        Number of trees of the regression BART modeling `y`.
+    n_class_trees
+        Number of trees of the probit BART modeling the missingness of `y`.
+    burn
+        Number of burn-in MCMC iterations discarded.
+    iters
+        Number of post-burn-in iterations retained after thinning.
+    thin
+        Thinning interval; the chain runs ``burn + thin * iters`` iterations.
+    predict
+        Whether to draw the posterior predictive at `x_predict`; see Notes for
+        the interaction with `x_predict`.
+    MH_sd
+        Standard deviation of the Metropolis-Hastings proposal updating the
+        missing entries of `y`; default ``0.5 / p``.
+    tree_prior_params
+        Tree-prior parameters as a `TreePriorParams` dict; it must be complete,
+        as passing it directly skips ``tree_list``'s own defaults. Setting the
+        individual parameters as keyword arguments instead (see
+        ``**hyperparams``) avoids this.
+    hypers
+        Prior hyperparameters as a `Hypers` dict; it must be complete, as
+        passing it directly skips ``hypers_list``'s own defaults. Setting the
+        individual hyperparameters as keyword arguments instead (see
+        ``**hyperparams``) avoids this.
+    scale
+        Whether to scale `y` to ``[-0.5, 0.5]`` before fitting.
+    include_x
+        Whether the missingness probit model uses `x` as predictors.
+    include_y
+        Whether the missingness probit model uses `y` as predictors.
+    show_progress
+        Whether to display a progress bar in the R console.
+    progress_every
+        Update the progress bar every this many iterations.
+    pdp_range
+        Range over which the partial dependence plot is evaluated (with
+        `make_pdp`).
+    make_pdp
+        Whether to compute partial dependence output; univariate `y` only.
+    mice_impute
+        Whether the missing entries of `y` are initialized with ``mice::mice``;
+        otherwise they start at zero.
+    **hyperparams
+        Extra keyword arguments, of the `Hyperparams` keys, forwarded verbatim
+        (R's ``...``), which populate the unset entries of `tree_prior_params`
+        (through ``tree_list``) and `hypers` (through ``hypers_list``); the
+        intended way to set individual tree-prior parameters and
+        hyperparameters.
+
+    Raises
+    ------
+    ValueError
+        If ``predict=True`` is passed without `x_predict`.
+
+    Notes
+    -----
     If `x_predict` is not specified, the wrapper passes ``predict=False`` and a
     placeholder `x_predict`, because the R code crashes on its own default
     ``x_predict = c()`` (``as.matrix(NULL)`` is an error). Explicitly passing
     ``predict=True`` without `x_predict` raises `ValueError`.
+
+    The R arguments ``true_trees_data``, ``true_trees_missing``,
+    ``true_change_points`` and ``true_change_points_miss`` are accepted but
+    never used by the upstream implementation, so they are not exposed (they
+    remain reachable through ``**hyperparams`` if ever needed).
     """
 
     _rfuncname = 'missBART::missBART2'
@@ -154,18 +293,64 @@ class missBART2(RObjectBase):
     column, since the probit trees model the per-column missingness
     indicators of `y`)."""
 
-    def __init__(self, *args, **kw) -> None:
-        # x is the 1st parameter of R's missBART2, x_predict the 3rd; reuse x
-        # as a placeholder that predict=False leaves untouched (see class doc)
-        if len(args) < 3 and 'x_predict' not in kw:
-            if kw.get('predict'):
+    def __init__(
+        self,
+        x: Float64[ndarray, 'n q'],
+        y: Float64[ndarray, 'n p'],
+        x_predict: Float64[ndarray, 'm q'] | None = None,
+        *,
+        n_reg_trees: int = 100,
+        n_class_trees: int = 100,
+        burn: int = 1000,
+        iters: int = 1000,
+        thin: int = 2,
+        predict: bool | None = None,
+        MH_sd: float | None = None,
+        tree_prior_params: TreePriorParams | None = None,
+        hypers: Hypers | None = None,
+        scale: bool = True,
+        include_x: bool = True,
+        include_y: bool = True,
+        show_progress: bool = True,
+        progress_every: int = 10,
+        pdp_range: Float64[ndarray, ' 2'] | tuple[float, float] = (-0.5, 0.5),
+        make_pdp: bool = False,
+        mice_impute: bool = True,
+        **hyperparams: Unpack[Hyperparams],
+    ) -> None:
+        if x_predict is None:
+            if predict:
                 msg = 'predict=True requires x_predict'
                 raise ValueError(msg)
-            x = args[0] if args else kw.get('x')
-            if x is not None:
-                kw = dict(kw, x_predict=x, predict=False)
+            # reuse x as a placeholder that predict=False leaves untouched: R's
+            # own default x_predict = c() makes as.matrix(NULL) error
+            x_predict = x
+            predict = False
 
-        super().__init__(*args, **kw)
+        kw = {
+            'x': x,
+            'y': y,
+            'x_predict': x_predict,
+            'n_reg_trees': n_reg_trees,
+            'n_class_trees': n_class_trees,
+            'burn': burn,
+            'iters': iters,
+            'thin': thin,
+            'predict': predict,
+            'MH_sd': MH_sd,
+            'tree_prior_params': tree_prior_params,
+            'hypers': hypers,
+            'scale': scale,
+            'include_x': include_x,
+            'include_y': include_y,
+            'show_progress': show_progress,
+            'progress_every': progress_every,
+            'pdp_range': np.asarray(pdp_range, float),
+            'make_pdp': make_pdp,
+            'mice_impute': mice_impute,
+            **hyperparams,
+        }
+        super().__init__(**drop_none(kw))
 
         self.MH_sd = self.MH_sd.item()
         self.burn = int(self.burn.item())
