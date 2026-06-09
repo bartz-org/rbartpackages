@@ -484,8 +484,7 @@ class mc_gbart(RObjectBase):
 
         Returns
         -------
-        pred : Float64[ndarray, 'ndpost m'] | Float64[ndarray, ' m'] | PredictBinary
-            The function draws at `newdata` for continuous fits (their mean with ``dodraws=False``), or a `PredictBinary` dict for binary fits.
+        The function draws at `newdata` for continuous fits (their mean with ``dodraws=False``), or a `PredictBinary` dict for binary fits.
 
         Notes
         -----

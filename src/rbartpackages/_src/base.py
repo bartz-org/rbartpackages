@@ -144,8 +144,7 @@ def drop_none(kw: dict[str, Any]) -> dict[str, Any]:
 
     Returns
     -------
-    kw : dict[str, Any]
-        The arguments whose value is not ``None``.
+    The arguments whose value is not ``None``.
     """
     return {name: value for name, value in kw.items() if value is not None}
 
@@ -357,9 +356,7 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
 
     Returns
     -------
-    methimpl
-        An implementation of the method that calls the R method. The original
-        implementation of meth is completely discarded.
+    An implementation of the method that calls the R method, discarding the original implementation of `meth`.
 
     Examples
     --------
@@ -408,8 +405,7 @@ def rproperty(
 
     Returns
     -------
-    prop
-        A read-only property that extracts the field with R's ``$`` operator. NULL fields are exposed as ``None``.
+    A read-only property that extracts the field with R's ``$`` operator. NULL fields are exposed as ``None``.
 
     Examples
     --------
@@ -453,10 +449,7 @@ def rfunction(func: Callable, *, library: str, rname: str | None = None) -> Call
 
     Returns
     -------
-    funcimpl
-        An implementation that calls the R function on the converted
-        arguments; `RObjectBase` instances are passed as their wrapped R
-        objects.
+    An implementation that calls the R function on the converted arguments; `RObjectBase` instances are passed as their wrapped R objects.
 
     Raises
     ------
