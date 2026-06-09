@@ -289,6 +289,29 @@ class RObjectBase:
         self._set_attrs_from_robject()
         return self
 
+    def _call_rmethod(self, rname: str, *args: Any, **kw: Any) -> object:
+        """Call the R method `rname` of `_robject` on the converted arguments.
+
+        Dispatches on the kind of R object: an S4 object (e.g. a reference
+        class such as the `dbarts` sampler) carries its methods as fields, so
+        the method is fetched with R's ``$`` operator; for anything else the
+        S3 method matching `_robject`'s class is looked up in `_library`. The
+        result is converted back to Python.
+        """
+        if isinstance(self._robject, RS4):
+            func = robjects.r['$'](self._robject, rname)
+            out = func(*self._args2r(args), **self._kw2r(kw))
+        else:
+            if not fullmatch(R_IDENTIFIER, rname):
+                msg = f'Invalid R method name: {rname}'
+                raise ValueError(msg)
+            rclass = self._robject.rclass[0]
+            func = robjects.r(
+                f'getS3method("{rname}", "{rclass}", envir = asNamespace("{self._library}"))'
+            )
+            out = func(self._robject, *self._args2r(args), **self._kw2r(kw))
+        return self._r2py(out)
+
     def __init_subclass__(cls, **kw: Any) -> None:
         """Automatically add R documentation to subclasses."""
         library, name = cls._rfuncname.split('::')
@@ -343,21 +366,7 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
 
     @wraps(meth)
     def impl(self: RObjectBase, *args: Any, **kw: Any) -> object:
-        if isinstance(self._robject, RS4):
-            func = robjects.r['$'](self._robject, rname)
-            out = func(*self._args2r(args), **self._kw2r(kw))
-
-        else:
-            if not fullmatch(R_IDENTIFIER, rname):
-                msg = f'Invalid R method name: {rname}'
-                raise ValueError(msg)
-            rclass = self._robject.rclass[0]
-            func = robjects.r(
-                f'getS3method("{rname}", "{rclass}", envir = asNamespace("{self._library}"))'
-            )
-            out = func(self._robject, *self._args2r(args), **self._kw2r(kw))
-
-        return self._r2py(out)
+        return self._call_rmethod(rname, *args, **kw)
 
     return impl
 
