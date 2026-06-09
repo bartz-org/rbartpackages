@@ -24,19 +24,16 @@
 
 """Implementation of `rbartpackages.bartMachine`."""
 
-# ruff: noqa: ANN002, ANN003
-
 from functools import partial
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
-from jaxtyping import AbstractDtype, Float64
+from jaxtyping import AbstractDtype, Float64, Integer
 from numpy import ndarray
-from pandas import DataFrame
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 from rpy2.robjects.methods import RS4
 
-from rbartpackages._src.base import RObjectBase, rfunction, rmethod
+from rbartpackages._src.base import DataFrame, RObjectBase, drop_none, rfunction
 
 # The JVM reads its options only at startup; rJava starts it when the
 # bartMachine namespace is first loaded, which the rfunction decorations below
@@ -70,12 +67,135 @@ class String(AbstractDtype):
     dtypes = r'<U\d+'
 
 
+def to_response(y: object) -> object:
+    """
+    Convert a numpy array `y` to a bare R vector; pass anything else through.
+
+    rpy2's numpy bridge tags even a 1-D array with a ``dim``, which bartMachine
+    rejects (it wants a bare atomic vector), so the R vector is built directly:
+    a numeric array becomes a numeric vector (a regression response), a string
+    or object array becomes a factor with alphabetically ordered levels (a
+    classification response). pandas/polars series, which already convert to
+    the right thing, pass through unchanged.
+    """
+    if isinstance(y, ndarray):
+        if y.dtype.kind in 'OSU':
+            return robjects.r['as.factor'](robjects.StrVector(y.astype(str).tolist()))
+        return robjects.FloatVector(y.astype(float).tolist())
+    return y
+
+
 class bartMachine(RObjectBase):
     """
-    Python interface to bartMachine::bartMachine.
+    Fit BART to continuous or binary outcomes.
 
-    The number of fitting threads is a package-global setting, see
-    `set_bart_machine_num_cores`.
+    Python interface to R's ``bartMachine::bartMachine``. The predictors `X`
+    must be a data frame (factor columns are expanded internally); `y` is a
+    numeric vector for regression or a two-level factor for classification.
+    Pass `X` and `y` separately, or combined as `Xy`. The number of fitting
+    threads is a package-global setting, see `set_bart_machine_num_cores`.
+    Arguments left to ``None`` are omitted from the R call, so R computes its
+    own defaults, described below.
+
+    Parameters
+    ----------
+    X
+        Data frame of predictors; rows are observations. Factors are expanded
+        into indicator columns internally.
+    y
+        Response: numeric for regression, two-level categorical for
+        classification. A numeric numpy array or pandas/polars ``Series`` works
+        for regression; classification needs a factor, so pass a string/object
+        numpy array (whose levels are then ordered alphabetically, the first
+        being the positive one) or a categorical ``Series`` (which controls the
+        level order).
+    Xy
+        Predictors and response combined in one data frame, the response in a
+        column named ``'y'``; an alternative to passing `X` and `y`.
+    num_trees
+        Number of trees in the sum-of-trees model.
+    num_burn_in
+        Number of burn-in MCMC iterations discarded.
+    num_iterations_after_burn_in
+        Number of posterior draws kept after burn-in.
+    alpha
+        Base of the nonterminal-node probability in the tree prior.
+    beta
+        Power of the nonterminal-node probability in the tree prior.
+    k
+        Number of prior SDs of E[y|x] in half the response range; larger
+        shrinks more.
+    q
+        Quantile of the error-variance prior at which the data-based estimate
+        is placed (regression only).
+    nu
+        Degrees of freedom of the inverse-chi-squared error-variance prior
+        (regression only).
+    prob_rule_class
+        Probability threshold above which a class prediction gets the first
+        (positive) level (classification only).
+    mh_prob_steps
+        Prior probabilities of the grow/prune/change Metropolis-Hastings tree
+        proposals; default ``(2.5, 2.5, 4) / 9``.
+    debug_log
+        Whether the Java backend logs to a file in the working directory.
+    run_in_sample
+        Whether the in-sample (``*_train``) statistics are computed.
+    s_sq_y
+        How the error-variance estimate is computed, ``'mse'`` (least-squares
+        residuals) or ``'var'`` (response variance); regression only.
+    sig_sq_est
+        Data-based error-variance estimate anchoring the prior; default a
+        linear-model estimate (regression only).
+    print_tree_illustrations
+        Whether every Gibbs iteration prints a side-by-side tree illustration;
+        extremely slow.
+    cov_prior_vec
+        Relative split-proposal weight of each predictor (after dummification
+        and missingness augmentation); internally normalized.
+    interaction_constraints
+        Groups of predictors allowed to interact, as a dict of vectors of
+        1-based column indices or column names (e.g.
+        ``{'a': [1, 2], 'b': ['nox']}``); rpy2 converts a dict, not a list, to
+        the R list bartMachine wants.
+    use_missing_data
+        Whether missing entries are handled natively by the splits, without
+        imputation.
+    num_rand_samps_in_library
+        Size of the pre-drawn normal/chi-squared sample library passed to Java.
+    use_missing_data_dummies_as_covars
+        Whether per-predictor missingness indicators are added to the design
+        matrix.
+    replace_missing_data_with_x_j_bar
+        Whether missing entries are imputed with column averages/modes.
+    impute_missingness_with_rf_impute
+        Whether missing entries are filled with ``randomForest::rfImpute``.
+    impute_missingness_with_x_j_bar_for_lm
+        Whether the linear model behind `sig_sq_est` imputes missing entries
+        with column averages/modes.
+    mem_cache_for_speed
+        Whether the Java backend caches the candidate split values at each
+        node; faster but memory-hungry.
+    flush_indices_to_save_RAM
+        Whether the Java backend flushes internal indices to save memory
+        (disables ``node_prediction_training_data_indices`` and
+        ``get_projection_weights``).
+    serialize
+        Whether the Java model is serialized into the R object so it survives
+        saving and reloading; memory-hungry.
+    seed
+        Seed of the R and Java RNGs; ``None`` does not seed. Deterministic only
+        when fitting single-threaded.
+    use_xoshiro
+        Whether the Java backend uses the Xoshiro256PlusPlus RNG rather than
+        the legacy MersenneTwister.
+    verbose
+        Whether fitting progress is printed to the screen.
+
+    Notes
+    -----
+    The private R argument ``covariates_to_permute`` (used internally by
+    ``cov_importance_test``) is not exposed.
     """
 
     _rfuncname = 'bartMachine::bartMachine'
@@ -90,7 +210,10 @@ class bartMachine(RObjectBase):
     """In-sample ``1 - L2_err_train / L2 of the mean`` (regression with `run_in_sample` only)."""
 
     X: DataFrame
-    """Training predictors as supplied (factors not expanded)."""
+    """Training predictors as supplied (factors not expanded).
+
+    A polars frame if polars is installed, else a pandas one.
+    """
 
     alpha: float
     """Base of the nonterminal-node probability in the tree prior."""
@@ -99,7 +222,10 @@ class bartMachine(RObjectBase):
     """Power of the nonterminal-node probability in the tree prior."""
 
     confusion_matrix: DataFrame | None = None
-    """In-sample confusion matrix with error rates (classification with `run_in_sample` only)."""
+    """In-sample confusion matrix with error rates (classification with `run_in_sample` only).
+
+    A polars frame (so without the row labels) if polars is installed, else a pandas one.
+    """
 
     cov_prior_vec: Float64[ndarray, ' p'] | None = None
     """Relative split-proposal weight of each predictor.
@@ -286,8 +412,80 @@ class bartMachine(RObjectBase):
         ('verbose', bool),
     )
 
-    def __init__(self, *args, **kw) -> None:
-        super().__init__(*args, **kw)
+    def __init__(
+        self,
+        X: DataFrame | None = None,
+        y: Float64[ndarray, ' n'] | String[ndarray, ' n'] | None = None,
+        *,
+        Xy: DataFrame | None = None,
+        num_trees: int = 50,
+        num_burn_in: int = 250,
+        num_iterations_after_burn_in: int = 1000,
+        alpha: float = 0.95,
+        beta: float = 2.0,
+        k: float = 2.0,
+        q: float = 0.9,
+        nu: float = 3.0,
+        prob_rule_class: float = 0.5,
+        mh_prob_steps: Float64[ndarray, ' 3'] | None = None,
+        debug_log: bool = False,
+        run_in_sample: bool = True,
+        s_sq_y: Literal['mse', 'var'] = 'mse',
+        sig_sq_est: float | None = None,
+        print_tree_illustrations: bool = False,
+        cov_prior_vec: Float64[ndarray, ' p'] | None = None,
+        interaction_constraints: dict[
+            str, Integer[ndarray, ' k'] | String[ndarray, ' k']
+        ]
+        | None = None,
+        use_missing_data: bool = False,
+        num_rand_samps_in_library: int = 10000,
+        use_missing_data_dummies_as_covars: bool = False,
+        replace_missing_data_with_x_j_bar: bool = False,
+        impute_missingness_with_rf_impute: bool = False,
+        impute_missingness_with_x_j_bar_for_lm: bool = True,
+        mem_cache_for_speed: bool = True,
+        flush_indices_to_save_RAM: bool = True,
+        serialize: bool = False,
+        seed: int | None = None,
+        use_xoshiro: bool = False,
+        verbose: bool = True,
+    ) -> None:
+        kw = {
+            'X': X,
+            'y': to_response(y),
+            'Xy': Xy,
+            'num_trees': num_trees,
+            'num_burn_in': num_burn_in,
+            'num_iterations_after_burn_in': num_iterations_after_burn_in,
+            'alpha': alpha,
+            'beta': beta,
+            'k': k,
+            'q': q,
+            'nu': nu,
+            'prob_rule_class': prob_rule_class,
+            'mh_prob_steps': mh_prob_steps,
+            'debug_log': debug_log,
+            'run_in_sample': run_in_sample,
+            's_sq_y': s_sq_y,
+            'sig_sq_est': sig_sq_est,
+            'print_tree_illustrations': print_tree_illustrations,
+            'cov_prior_vec': cov_prior_vec,
+            'interaction_constraints': interaction_constraints,
+            'use_missing_data': use_missing_data,
+            'num_rand_samps_in_library': num_rand_samps_in_library,
+            'use_missing_data_dummies_as_covars': use_missing_data_dummies_as_covars,
+            'replace_missing_data_with_x_j_bar': replace_missing_data_with_x_j_bar,
+            'impute_missingness_with_rf_impute': impute_missingness_with_rf_impute,
+            'impute_missingness_with_x_j_bar_for_lm': impute_missingness_with_x_j_bar_for_lm,
+            'mem_cache_for_speed': mem_cache_for_speed,
+            'flush_indices_to_save_RAM': flush_indices_to_save_RAM,
+            'serialize': serialize,
+            'seed': seed,
+            'use_xoshiro': use_xoshiro,
+            'verbose': verbose,
+        }
+        super().__init__(**drop_none(kw))
 
         # fix up attributes
         for name in self._null_components:
@@ -307,37 +505,78 @@ class bartMachine(RObjectBase):
             constraints = cast(NamedList, self.interaction_constraints)
             self.interaction_constraints = tuple(it.value for it in constraints.items())
 
-    @rmethod
     def predict(
-        self, new_data: DataFrame, *args, **kw
+        self,
+        new_data: DataFrame,
+        *,
+        type: Literal['prob', 'class'] | None = None,  # noqa: A002 mirrors the R argument name
+        prob_rule_class: float | None = None,
+        verbose: bool | None = None,
     ) -> Float64[ndarray, ' m'] | String[ndarray, ' m']:
-        """Posterior-mean predictions at the rows of `new_data`.
+        """
+        Posterior-mean predictions at the rows of `new_data`.
 
         For regression fits, the posterior mean of f(x). For classification
         fits, the probability of the first level (``type='prob'``, the
-        default) or the corresponding labels (``type='class'``).
+        default) or the corresponding labels (``type='class'``). Arguments
+        left to ``None`` are omitted from the R call, so R computes its own
+        defaults.
+
+        Parameters
+        ----------
+        new_data
+            Predictors to predict at, with the same columns as the training
+            data.
+        type
+            For classification fits, whether to return the first-level
+            probability (``'prob'``) or the predicted labels (``'class'``);
+            ignored for regression.
+        prob_rule_class
+            Probability threshold for a ``'class'`` prediction; default the
+            fit's `prob_rule_class`.
+        verbose
+            Whether to print prediction messages to the R console.
+
+        Returns
+        -------
+        The posterior means (or labels with ``type='class'``) at `new_data`.
         """
-        ...
+        kw = {'type': type, 'prob_rule_class': prob_rule_class, 'verbose': verbose}
+        return self._call_rmethod('predict', new_data, **drop_none(kw))
 
 
 @partial(rfunction, library='bartMachine', rname='bart_machine_get_posterior')
 def _bart_machine_get_posterior(
-    bart_machine: bartMachine, new_data: DataFrame, *args, **kw
+    bart_machine: bartMachine, new_data: DataFrame, verbose: bool
 ) -> object:
     """Call R's `bart_machine_get_posterior`; returns an R list."""
     ...
 
 
 def bart_machine_get_posterior(
-    bart_machine: bartMachine, new_data: DataFrame, *args, **kw
+    bart_machine: bartMachine, new_data: DataFrame, *, verbose: bool = True
 ) -> Posterior:
-    """Posterior draws of f(x) at the rows of `new_data`.
+    """
+    Posterior draws of f(x) at the rows of `new_data`.
 
     The draws are probabilities of the first level for classification fits.
     R returns a list, exposed here as a `Posterior` dict.
+
+    Parameters
+    ----------
+    bart_machine
+        The fitted model to predict from.
+    new_data
+        Predictors to predict at, with the same columns as the training data.
+    verbose
+        Whether to print prediction messages to the R console.
+
+    Returns
+    -------
+    The posterior draws at `new_data`, as a `Posterior` dict.
     """
     out = cast(
-        NamedList, _bart_machine_get_posterior(bart_machine, new_data, *args, **kw)
+        NamedList, _bart_machine_get_posterior(bart_machine, new_data, verbose=verbose)
     )
     return cast(Posterior, {str(it.name): it.value for it in out.items()})
 
@@ -355,27 +594,61 @@ def bart_machine_num_cores() -> int:
 
 @partial(rfunction, library='bartMachine')
 def get_sigsqs(
-    bart_machine: bartMachine, *args, **kw
+    bart_machine: bartMachine,
+    after_burn_in: bool = True,
+    plot_hist: bool = False,
+    plot_CI: float = 0.95,
+    plot_sigma: bool = False,
+    verbose: bool = True,
 ) -> (
     Float64[ndarray, ' num_iterations_after_burn_in'] | Float64[ndarray, ' num_gibbs+1']
 ):
-    """Posterior draws of the error variance (regression fits only).
+    """
+    Posterior draws of the error variance (regression fits only).
 
     Burn-in draws are dropped unless ``after_burn_in=False``, which also
     keeps the pre-MCMC initial value as first entry.
+
+    Parameters
+    ----------
+    bart_machine
+        The fitted model to read the draws from.
+    after_burn_in
+        Whether to drop the burn-in draws (and the pre-MCMC initial value).
+    plot_hist
+        Whether to plot a histogram of the post-burn-in draws.
+    plot_CI
+        Credible-interval level marked on the histogram (with `plot_hist`).
+    plot_sigma
+        Whether the histogram is of the SD rather than the variance (with
+        `plot_hist`).
+    verbose
+        Whether to print messages to the R console.
+
+    Returns
+    -------
+    The error-variance draws (the pre-MCMC initial value first when ``after_burn_in=False``).
     """
     ...
 
 
 @partial(rfunction, library='bartMachine', rname='set_bart_machine_num_cores')
-def _set_bart_machine_num_cores(num_cores: int) -> object:
+def _set_bart_machine_num_cores(num_cores: int, verbose: bool) -> object:
     """Call R's `set_bart_machine_num_cores`; returns NULL."""
     ...
 
 
-def set_bart_machine_num_cores(num_cores: int) -> None:
-    """Set the number of threads `bartMachine` uses to fit the model.
+def set_bart_machine_num_cores(num_cores: int, *, verbose: bool = True) -> None:
+    """
+    Set the number of threads `bartMachine` uses to fit the model.
 
     A package-global setting that persists across fits.
+
+    Parameters
+    ----------
+    num_cores
+        Number of threads to use.
+    verbose
+        Whether to print a confirmation message to the R console.
     """
-    _set_bart_machine_num_cores(num_cores)
+    _set_bart_machine_num_cores(num_cores, verbose=verbose)

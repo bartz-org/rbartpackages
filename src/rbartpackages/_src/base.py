@@ -65,8 +65,20 @@ else:
         df = df.to_pandas()
         return pandas2ri.py2rpy(df)
 
+    def r_to_polars(df: object) -> pl.DataFrame:
+        """
+        Convert an R data frame to polars through pandas.
+
+        Registered so that, when polars is installed, it wins over the pandas
+        converter for R data frames (the converters are summed with polars
+        after pandas, so its later registration takes precedence). polars has
+        no row index, so an R data frame's row names are dropped.
+        """
+        return pl.from_pandas(pandas2ri.rpy2py(df))
+
     POLARS_CONVERTER.py2rpy.register(pl.DataFrame, polars_to_r)
     POLARS_CONVERTER.py2rpy.register(pl.Series, polars_to_r)
+    POLARS_CONVERTER.rpy2py.register(robjects.vectors.DataFrame, r_to_polars)
 
 # converter for jax
 JAX_CONVERTER = conversion.Converter('jax')
@@ -112,7 +124,8 @@ DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
 
 
 class DataFrame(Protocol):
-    """Duck type of the dataframe arguments accepted by the wrappers.
+    """
+    Duck type of the dataframe arguments accepted by the wrappers.
 
     Both `pandas.DataFrame` and :doc:`polars.DataFrame
     <polars:reference/dataframe/index>` match; they are converted to R data
@@ -124,7 +137,8 @@ class DataFrame(Protocol):
 
 
 def drop_none(kw: dict[str, Any]) -> dict[str, Any]:
-    """Drop the arguments left to ``None`` to let R compute its defaults.
+    """
+    Drop the arguments left to ``None`` to let R compute its defaults.
 
     Parameters
     ----------
@@ -133,8 +147,7 @@ def drop_none(kw: dict[str, Any]) -> dict[str, Any]:
 
     Returns
     -------
-    kw : dict[str, Any]
-        The arguments whose value is not ``None``.
+    The arguments whose value is not ``None``.
     """
     return {name: value for name, value in kw.items() if value is not None}
 
@@ -159,7 +172,8 @@ NATIVE_THREAD_POOLS = (
 
 @contextmanager
 def fork_safe_native_threads() -> Iterator[None]:
-    """Cap OpenMP/OpenBLAS thread pools at one thread for the duration.
+    """
+    Cap OpenMP/OpenBLAS thread pools at one thread for the duration.
 
     Workaround for the deadlock that hangs the children forked by R's
     ``parallel::mcparallel`` when GNU libgomp has a live thread pool (see
@@ -246,7 +260,8 @@ class RObjectBase:
 
     @staticmethod
     def _has_named_components(obj: object) -> bool:
-        """Whether `obj` exposes named components to set as attributes.
+        """
+        Whether `obj` exposes named components to set as attributes.
 
         Only an R named list qualifies. A bare matrix (as `bartModelMatrix`
         gives with ``numcut=0``) is excluded by the `ListVector` check: rpy2
@@ -278,7 +293,8 @@ class RObjectBase:
 
     @classmethod
     def _wrap(cls, robject: object) -> Self:
-        """Wrap an existing R object, skipping the call to the R function.
+        """
+        Wrap an existing R object, skipping the call to the R function.
 
         The named components of `robject` are exposed as attributes like in
         `__init__`, but any subclass post-processing of the attributes is
@@ -288,6 +304,30 @@ class RObjectBase:
         self._robject = robject
         self._set_attrs_from_robject()
         return self
+
+    def _call_rmethod(self, rname: str, *args: Any, **kw: Any) -> object:
+        """
+        Call the R method `rname` of `_robject` on the converted arguments.
+
+        Dispatches on the kind of R object: an S4 object (e.g. a reference
+        class such as the `dbarts` sampler) carries its methods as fields, so
+        the method is fetched with R's ``$`` operator; for anything else the
+        S3 method matching `_robject`'s class is looked up in `_library`. The
+        result is converted back to Python.
+        """
+        if isinstance(self._robject, RS4):
+            func = robjects.r['$'](self._robject, rname)
+            out = func(*self._args2r(args), **self._kw2r(kw))
+        else:
+            if not fullmatch(R_IDENTIFIER, rname):
+                msg = f'Invalid R method name: {rname}'
+                raise ValueError(msg)
+            rclass = self._robject.rclass[0]
+            func = robjects.r(
+                f'getS3method("{rname}", "{rclass}", envir = asNamespace("{self._library}"))'
+            )
+            out = func(self._robject, *self._args2r(args), **self._kw2r(kw))
+        return self._r2py(out)
 
     def __init_subclass__(cls, **kw: Any) -> None:
         """Automatically add R documentation to subclasses."""
@@ -312,7 +352,8 @@ class RObjectBase:
 
 
 def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
-    """Automatically implement a method using the correspoding R method.
+    """
+    Automatically implement a method using the correspoding R method.
 
     Parameters
     ----------
@@ -323,9 +364,7 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
 
     Returns
     -------
-    methimpl
-        An implementation of the method that calls the R method. The original
-        implementation of meth is completely discarded.
+    An implementation of the method that calls the R method, discarding the original implementation of `meth`.
 
     Examples
     --------
@@ -343,21 +382,7 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
 
     @wraps(meth)
     def impl(self: RObjectBase, *args: Any, **kw: Any) -> object:
-        if isinstance(self._robject, RS4):
-            func = robjects.r['$'](self._robject, rname)
-            out = func(*self._args2r(args), **self._kw2r(kw))
-
-        else:
-            if not fullmatch(R_IDENTIFIER, rname):
-                msg = f'Invalid R method name: {rname}'
-                raise ValueError(msg)
-            rclass = self._robject.rclass[0]
-            func = robjects.r(
-                f'getS3method("{rname}", "{rclass}", envir = asNamespace("{self._library}"))'
-            )
-            out = func(self._robject, *self._args2r(args), **self._kw2r(kw))
-
-        return self._r2py(out)
+        return self._call_rmethod(rname, *args, **kw)
 
     return impl
 
@@ -368,7 +393,8 @@ def rproperty(
     rname: str | None = None,
     wrap: type[RObjectBase] | None = None,
 ) -> property | Callable[[Callable], property]:
-    """Automatically implement a read-only property using the corresponding R field.
+    """
+    Automatically implement a read-only property using the corresponding R field.
 
     Unlike the attributes `RObjectBase` snapshots at initialization, the field
     is extracted from the R object at each access, so it tracks mutable
@@ -388,8 +414,7 @@ def rproperty(
 
     Returns
     -------
-    prop
-        A read-only property that extracts the field with R's ``$`` operator. NULL fields are exposed as ``None``.
+    A read-only property that extracts the field with R's ``$`` operator. NULL fields are exposed as ``None``.
 
     Examples
     --------
@@ -418,7 +443,8 @@ def rproperty(
 
 
 def rfunction(func: Callable, *, library: str, rname: str | None = None) -> Callable:
-    """Automatically implement a function using the corresponding R function.
+    """
+    Automatically implement a function using the corresponding R function.
 
     Parameters
     ----------
@@ -433,10 +459,7 @@ def rfunction(func: Callable, *, library: str, rname: str | None = None) -> Call
 
     Returns
     -------
-    funcimpl
-        An implementation that calls the R function on the converted
-        arguments; `RObjectBase` instances are passed as their wrapped R
-        objects.
+    An implementation that calls the R function on the converted arguments; `RObjectBase` instances are passed as their wrapped R objects.
 
     Raises
     ------

@@ -28,12 +28,13 @@ import ctypes
 from functools import partial
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 from rpy2 import robjects
 
 from rbartpackages import base
 from rbartpackages._src.base import fork_safe_native_threads
-from tests.util import assert_allclose
+from tests.util import assert_allclose, assert_array_equal
 
 
 def stats4_loaded() -> bool:
@@ -84,6 +85,24 @@ def test_doc_pulled_from_r_when_missing() -> None:
     assert 'R documentation\n---------------' in Lm.__doc__
     # content from the help page of stats::lm, indented as a literal block
     assert '    Fitting Linear Models' in Lm.__doc__
+
+
+def test_r_dataframe_converts_to_polars() -> None:
+    """With polars installed, R data frames convert to polars rather than pandas.
+
+    The polars converter is summed after the pandas one, so its R-to-Python
+    registration for data frames takes precedence; bare vectors are untouched.
+    """
+    pl = pytest.importorskip('polars')
+    rdf = robjects.r('data.frame(a = c(1.0, 2.0, 3.0), b = c(4L, 5L, 6L))')
+    out = base.RObjectBase._r2py(rdf)
+    assert isinstance(out, pl.DataFrame)
+    assert out.columns == ['a', 'b']
+    assert out['a'].to_list() == [1.0, 2.0, 3.0]
+    # a bare vector still converts to numpy, not a one-column frame
+    assert_array_equal(
+        base.RObjectBase._r2py(robjects.r('c(1.0, 2.0)')), np.array([1.0, 2.0])
+    )
 
 
 def test_fork_safe_native_threads(monkeypatch: pytest.MonkeyPatch) -> None:

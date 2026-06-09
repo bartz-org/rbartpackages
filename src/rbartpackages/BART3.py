@@ -22,7 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package BART3 (`rsparapa/bnptools <https://github.com/rsparapa/bnptools>`_, ``BART3`` subdirectory).
+"""
+Wrapper for the R package BART3 (`rsparapa/bnptools <https://github.com/rsparapa/bnptools>`_, ``BART3`` subdirectory).
 
 Model fitting
 -------------

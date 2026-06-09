@@ -25,11 +25,15 @@
 """Tests for the bartMachine wrapper (needs R bartMachine + Java)."""
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
+from inspect import Parameter, signature
 
 import numpy as np
 import pandas as pd
 import pytest
+from numpy import ndarray
+from rpy2 import robjects
 from rpy2.rinterface_lib.embedded import RRuntimeError
 
 from rbartpackages import bartMachine
@@ -55,8 +59,8 @@ class Data:
     y: pd.Series
     """Numeric outcomes, the first predictor plus noise.
 
-    A Series (not a numpy array) so it converts to a plain R atomic vector;
-    numpy2ri gives even 1-D arrays a ``dim``, which bartMachine rejects.
+    A Series rather than a numpy array, though the wrapper now accepts either
+    (see `test_numpy_response`); ``.to_numpy()`` recovers the array form.
     """
 
     x_test: pd.DataFrame
@@ -275,6 +279,54 @@ def test_no_in_sample(data: Data, rng: np.random.Generator) -> None:
     assert bm.predict(data.x).shape == (n,)
 
 
+def test_numpy_response(data: Data, rng: np.random.Generator) -> None:
+    """`y` can be a numpy array: numeric for regression, string for classification.
+
+    The wrapper builds a bare R numeric vector or factor directly, sidestepping
+    the ``dim`` that rpy2's numpy bridge attaches (and that bartMachine rejects).
+    """
+    common = dict(
+        num_trees=NTREE,
+        num_burn_in=NBURN,
+        num_iterations_after_burn_in=NPOST,
+        seed=int_seed(rng),
+        verbose=False,
+    )
+    bartMachine.set_bart_machine_num_cores(1, verbose=False)
+
+    reg = bartMachine.bartMachine(X=data.x, y=data.y.to_numpy(), **common)
+    assert reg.pred_type == 'regression'
+    assert_close_matrices(reg.y, data.y.to_numpy())
+
+    # a plain numpy string array becomes a factor (alphabetical levels)
+    labels = data.labels.to_numpy().astype(str)
+    clf = bartMachine.bartMachine(X=data.x, y=labels, **common)
+    assert clf.pred_type == 'classification'
+    assert list(clf.y_levels) == ['a', 'b']
+
+
+def test_xy_interface(data: Data, rng: np.random.Generator) -> None:
+    """`Xy` bundles the predictors and the response in one data frame.
+
+    The response goes in a column named ``'y'``; it is an alternative to
+    passing `X` and `y` separately.
+    """
+    n, p = data.x.shape
+    bartMachine.set_bart_machine_num_cores(1, verbose=False)
+    bm = bartMachine.bartMachine(
+        Xy=data.x.assign(y=data.y),
+        num_trees=NTREE,
+        num_burn_in=NBURN,
+        num_iterations_after_burn_in=NPOST,
+        seed=int_seed(rng),
+        verbose=False,
+    )
+    assert (bm.n, bm.p) == (n, p)
+    assert bm.pred_type == 'regression'
+    assert list(bm.X.columns) == list(data.x.columns)
+    assert_close_matrices(bm.y, data.y.to_numpy())
+
+
 def test_optional_inputs(data: Data, rng: np.random.Generator) -> None:
     """User-given optional inputs come back converted to Python values."""
     _, p = data.x.shape
@@ -293,3 +345,133 @@ def test_optional_inputs(data: Data, rng: np.random.Generator) -> None:
     first, second = bm.interaction_constraints
     assert_array_equal(first, np.array([0.0, 1.0]))
     assert_array_equal(second, np.array([2.0]))
+
+
+def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
+    """Evaluate the argument defaults of an R function in isolation.
+
+    Defaults that are NULL, missing, or that cannot be evaluated standalone
+    (e.g. because they reference other arguments) are omitted.
+    """
+    rdefaults = robjects.r(f"""
+        Filter(
+            Negate(is.null),
+            lapply(
+                formals({rfuncname}),
+                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
+            )
+        )
+    """)
+    return {
+        name: np.asarray(value)
+        for name, value in zip(rdefaults.names, rdefaults, strict=True)
+    }
+
+
+def mapped_params(
+    obj: Callable, *, skip: set[str] = frozenset()
+) -> dict[str, Parameter]:
+    """Return the named parameters of `obj`, keyed by R name.
+
+    bartMachine's R arguments already use Python-style underscores, so the
+    names map across verbatim. Skips ``self`` and the ``*args``/``**kwargs``
+    catch-alls, which have no R formal counterpart.
+    """
+    variadic = {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}
+    return {
+        name.removesuffix('_'): param
+        for name, param in signature(obj).parameters.items()
+        if name not in {'self', *skip} and param.kind not in variadic
+    }
+
+
+def has_var_keyword(obj: Callable) -> bool:
+    """Whether `obj` has a ``**kwargs`` catch-all (forwarding R's ``...``)."""
+    return any(
+        param.kind is Parameter.VAR_KEYWORD
+        for param in signature(obj).parameters.values()
+    )
+
+
+# the wrapper callables, their R name, and the R arguments deliberately left
+# unexposed (only the private `covariates_to_permute` of the constructor)
+SIGNATURE_CASES = [
+    (bartMachine.bartMachine, 'bartMachine::bartMachine', {'covariates_to_permute'}),
+    (bartMachine.get_sigsqs, 'bartMachine::get_sigsqs', set()),
+    (
+        bartMachine.bart_machine_get_posterior,
+        'bartMachine::bart_machine_get_posterior',
+        set(),
+    ),
+    (
+        bartMachine.set_bart_machine_num_cores,
+        'bartMachine::set_bart_machine_num_cores',
+        set(),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ('obj', 'rfuncname', 'unexposed'),
+    SIGNATURE_CASES,
+    ids=[name for _, name, _ in SIGNATURE_CASES],
+)
+def test_signature_defaults_match_r(
+    obj: Callable, rfuncname: str, unexposed: set[str]
+) -> None:
+    """The explicit signatures stay in sync with the wrapped R functions.
+
+    Every literal default in a Python signature must match its R counterpart,
+    every R argument must be either exposed or deliberately unexposed, and
+    none of these functions take R's ``...``, so that an upstream update that
+    changes a default or adds an argument fails here instead of silently
+    diverging.
+    """
+    params = mapped_params(obj)
+    rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+    assert '...' not in rnames, rfuncname
+    assert not has_var_keyword(obj), rfuncname
+    assert params.keys() <= rnames, rfuncname
+    assert rnames - params.keys() == unexposed, rfuncname
+
+    rdefaults = evaluated_r_formals(rfuncname)
+    for name, param in params.items():
+        if param.default is Parameter.empty or param.default is None:
+            continue  # required, or deferred to R
+        # a literal Python default needs a comparable R default
+        assert name in rdefaults, f'{rfuncname}, argument {name}'
+        # strict=False: R types its literals loosely (TRUE vs 1, 100L vs 100),
+        # so compare values only
+        assert_array_equal(
+            np.ravel(param.default),
+            np.ravel(rdefaults[name]),
+            strict=False,
+            err_msg=f'{rfuncname}, argument {name}',
+        )
+
+
+def test_predict_signature_matches_r() -> None:
+    """The explicit `predict` signature tracks the R ``predict.bartMachine`` method.
+
+    Every Python argument must appear in the S3 method's formals (minus the
+    `object`/`new_data` the wrapper fills itself), R's ignored ``...`` is left
+    unexposed, and the defaults defer to R with ``None``.
+    """
+    method = 'getS3method("predict", "bartMachine", envir = asNamespace("bartMachine"))'
+    rnames = set(robjects.r(f'names(formals({method}))')) - {'object', 'new_data'}
+    params = mapped_params(bartMachine.bartMachine.predict, skip={'new_data'})
+    assert params.keys() <= rnames
+    assert rnames - params.keys() == {'...'}
+    for name, param in params.items():
+        assert param.default is None, name
+
+
+def test_constructor_rejects_unknown_arguments() -> None:
+    """Arguments outside the explicit constructor signature fail before reaching R.
+
+    `bartMachine` has no R ``...``, so its explicit signature replaces it: a
+    misspelled or package-foreign argument fails as a `TypeError` instead of
+    being silently swallowed.
+    """
+    with pytest.raises(TypeError, match='unexpected keyword'):
+        bartMachine.bartMachine(num_tree=10)  # misspelled num_trees

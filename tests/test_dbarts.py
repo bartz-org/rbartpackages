@@ -25,7 +25,9 @@
 """Tests for the dbarts wrapper."""
 
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
+from inspect import Parameter, signature
 
 import numpy as np
 import pandas as pd
@@ -33,6 +35,7 @@ import pytest
 from jaxtyping import Float64
 from numpy import ndarray
 from rpy2 import robjects
+from rpy2.rinterface_lib.embedded import RRuntimeError
 from rpy2.robjects.language import LangVector
 
 from rbartpackages import dbarts
@@ -129,7 +132,8 @@ def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
     assert_close_matrices(bart.fitted(), draws.mean(axis=0), rtol=1e-7)
 
     trees = bart.extract(type='trees')
-    assert isinstance(trees, pd.DataFrame)
+    # the tree structure comes back as a dataframe (polars if installed, else
+    # pandas); both expose the column names through `.columns`
     assert {'sample', 'tree', 'n', 'var', 'value'} <= set(trees.columns)
 
 
@@ -552,3 +556,227 @@ def test_dbarts_show_trees(data: Data, capfd: pytest.CaptureFixture) -> None:
         sampler.plotTree(1)
     finally:
         robjects.r('invisible(dev.off())')
+
+
+def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
+    """Evaluate the argument defaults of an R function in isolation.
+
+    Defaults that are NULL, missing, or that cannot be evaluated standalone
+    (e.g. because they reference other arguments) are omitted.
+    """
+    rdefaults = robjects.r(f"""
+        Filter(
+            Negate(is.null),
+            lapply(
+                formals({rfuncname}),
+                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
+            )
+        )
+    """)
+    return {
+        name: np.asarray(value)
+        for name, value in zip(rdefaults.names, rdefaults, strict=True)
+    }
+
+
+def mapped_params(
+    obj: Callable, *, skip: set[str] = frozenset()
+) -> dict[str, Parameter]:
+    """Return the named parameters of `obj`, keyed by R name (``_`` to ``.``).
+
+    Skips ``self`` and the ``*args``/``**kwargs`` catch-alls, which have no R
+    formal counterpart.
+    """
+    variadic = {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}
+    return {
+        name.removesuffix('_').replace('_', '.'): param
+        for name, param in signature(obj).parameters.items()
+        if name not in {'self', *skip} and param.kind not in variadic
+    }
+
+
+def has_var_keyword(obj: Callable) -> bool:
+    """Whether `obj` has a ``**kwargs`` catch-all (forwarding R's ``...``)."""
+    return any(
+        param.kind is Parameter.VAR_KEYWORD
+        for param in signature(obj).parameters.values()
+    )
+
+
+# the wrapper constructors and the R arguments deliberately left unexposed (none:
+# the constructors expose every named R argument, forwarding `...` where present)
+CONSTRUCTOR_CASES = [
+    (dbarts.bart, set()),
+    (dbarts.bart2, set()),
+    (dbarts.rbart_vi, set()),
+    (dbarts.dbarts, set()),
+    (dbarts.dbartsControl, set()),
+    (dbarts.dbartsData, set()),
+]
+
+
+@pytest.mark.parametrize(
+    ('cls', 'unexposed'),
+    CONSTRUCTOR_CASES,
+    ids=[c.__name__ for c, _ in CONSTRUCTOR_CASES],
+)
+def test_signature_defaults_match_r(cls: type, unexposed: set[str]) -> None:
+    """The explicit constructor signatures stay in sync with the R functions.
+
+    Every literal default in a Python signature must match its R counterpart,
+    every R argument must be either exposed or deliberately unexposed, and R's
+    ``...`` must be forwarded by a ``**kwargs`` catch-all, so that an upstream
+    update that changes a default or adds an argument fails here instead of
+    silently diverging.
+    """
+    rfuncname = cls._rfuncname
+    params = mapped_params(cls)
+    rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+    # R's `...` is forwarded by a **kwargs catch-all, not a named parameter
+    assert ('...' in rnames) == has_var_keyword(cls), rfuncname
+    rnames -= {'...'}
+    assert params.keys() <= rnames, rfuncname
+    assert rnames - params.keys() == unexposed, rfuncname
+
+    rdefaults = evaluated_r_formals(rfuncname)
+    for name, param in params.items():
+        if param.default is Parameter.empty or param.default is None:
+            continue  # required, or deferred to R
+        # a literal Python default needs a comparable R default
+        assert name in rdefaults, f'{rfuncname}, argument {name}'
+        # strict=False: R types its literals loosely (TRUE vs 1, 100L vs 100),
+        # so compare values only
+        assert_array_equal(
+            np.ravel(param.default),
+            np.ravel(rdefaults[name]),
+            strict=False,
+            err_msg=f'{rfuncname}, argument {name}',
+        )
+
+
+# the bart/rbart fit generics, their R class, the dispatch arguments the
+# wrapper binds itself, and the R arguments left unexposed
+GENERIC_CASES = [
+    (dbarts.bart.predict, 'predict', 'bart', {'object', 'newdata'}, {'...'}),
+    (dbarts.bart.extract, 'extract', 'bart', {'object'}, {'...'}),
+    (dbarts.bart.fitted, 'fitted', 'bart', {'object'}, {'...'}),
+    (dbarts.rbart_vi.predict, 'predict', 'rbart', {'object', 'newdata'}, {'...'}),
+]
+
+
+@pytest.mark.parametrize(
+    ('meth', 'generic', 'rclass', 'bound', 'unexposed'),
+    GENERIC_CASES,
+    ids=[f'{g}.{c}' for _, g, c, _, _ in GENERIC_CASES],
+)
+def test_generic_signatures_match_r(
+    meth: Callable, generic: str, rclass: str, bound: set[str], unexposed: set[str]
+) -> None:
+    """The explicit `predict`/`extract`/`fitted` signatures track the R methods.
+
+    Every Python argument must appear in the dispatched R method's formals
+    (minus the dispatch arguments the wrapper fills itself), every R argument
+    must be exposed or deliberately unexposed, and the defaults vary with the
+    fit, so the signature defers each to R with ``None``.
+    """
+    method = f'getS3method("{generic}", "{rclass}", envir = asNamespace("dbarts"))'
+    rnames = set(robjects.r(f'names(formals({method}))')) - bound
+    params = mapped_params(meth, skip={'newdata'})
+    assert params.keys() <= rnames
+    assert rnames - params.keys() == unexposed
+    for name, param in params.items():
+        assert param.default is None, name
+
+
+# the sampler reference-class methods and the R arguments left unexposed
+SAMPLER_METHODS = [
+    ('run', set()),
+    ('copy', set()),
+    ('predict', set()),
+    ('sampleTreesFromPrior', set()),
+    ('sampleNodeParametersFromPrior', set()),
+    ('show', set()),
+    ('setControl', set()),
+    ('setModel', set()),
+    ('setData', set()),
+    ('setResponse', set()),
+    ('setOffset', set()),
+    ('setSigma', set()),
+    ('setPredictor', set()),
+    ('setTestPredictor', set()),
+    ('setTestPredictorAndOffset', set()),
+    ('setTestOffset', set()),
+    ('printTrees', set()),
+    ('plotTree', {'...'}),
+]
+
+
+@pytest.mark.parametrize(
+    ('method', 'unexposed'), SAMPLER_METHODS, ids=[m for m, _ in SAMPLER_METHODS]
+)
+def test_sampler_method_signatures_match_r(method: str, unexposed: set[str]) -> None:
+    """The explicit `dbarts` sampler methods track their R reference-class methods.
+
+    Every Python argument must appear in the reference method's formals, every
+    R argument must be exposed or deliberately unexposed, and the optional
+    arguments defer their R defaults (``NA``, the control object) with ``None``.
+    """
+    refmethods = 'dbarts:::dbartsSampler$def@refMethods'
+    rformals = robjects.r(f'names(formals({refmethods}${method}))')
+    rnames = set() if rformals is robjects.NULL else set(rformals)
+    params = mapped_params(getattr(dbarts.dbarts, method))
+    assert params.keys() <= rnames, method
+    assert rnames - params.keys() == unexposed, method
+    for name, param in params.items():
+        if param.default is not Parameter.empty:
+            assert param.default is None, f'{method}, argument {name}'
+
+
+def test_constructors_reject_unknown_arguments(data: Data) -> None:
+    """Arguments outside the explicit signatures of the dots-free constructors fail.
+
+    `bart`, `dbarts`, and `dbartsControl` have no R ``...``, so their explicit
+    signatures replace it: a misspelled or package-foreign argument fails as a
+    `TypeError` instead of reaching R.
+    """
+    with pytest.raises(TypeError, match='unexpected keyword'):
+        dbarts.bart(data.x, data.y, n_trees=NTREE)  # the bart2 spelling of ntree
+    with pytest.raises(TypeError, match='unexpected keyword'):
+        dbarts.dbarts(data.x, data.y, ntree=NTREE)  # the bart spelling
+    with pytest.raises(TypeError, match='unexpected keyword'):
+        dbarts.dbartsControl(bogus=1)
+
+
+def test_bart2_forwards_control_kwargs(data: Data) -> None:
+    """`bart2` forwards unrecognized keyword arguments to `dbartsControl`.
+
+    R's ``...`` reaches `dbartsControl`, so a valid control argument (here a
+    deterministic `rngSeed`) is accepted, while a bogus one is rejected by R.
+    """
+    common = dict(n_trees=NTREE, n_burn=NSKIP, n_samples=NDPOST, verbose=False)
+    fit = dbarts.bart2('y ~ x1 + x2 + x3', data=data.frame, rngSeed=1, **common)
+    again = dbarts.bart2('y ~ x1 + x2 + x3', data=data.frame, rngSeed=1, **common)
+    # the forwarded seed makes the single-threaded fit reproducible
+    assert_array_equal(fit.yhat_train, again.yhat_train)
+
+    with pytest.raises(RRuntimeError, match='unknown arguments'):
+        dbarts.bart2('y ~ x1', data=data.frame, totallybogus=1, **common)
+
+
+def test_bart_explicit_signature(data: Data) -> None:
+    """The explicit `bart` signature forwards its scalar arguments to R faithfully.
+
+    `sigest` overrides the calibrated error-SD estimate of a continuous fit,
+    and `binaryOffset` shifts the latent scale of a binary fit (R fills the
+    `binaryOffset` component with the per-observation value used).
+    """
+    n, _ = data.x.shape
+    common = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST, verbose=False)
+
+    sigest = 2.5
+    bart = dbarts.bart(data.x, data.y, sigest=sigest, **common)
+    assert bart.sigest == sigest
+
+    offset = 0.3
+    binary = dbarts.bart(data.x, data.biny, binaryOffset=offset, **common)
+    assert_array_equal(binary.binaryOffset, np.full(n, offset))

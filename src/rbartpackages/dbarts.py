@@ -22,7 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package dbarts (on CRAN).
+"""
+Wrapper for the R package dbarts (on CRAN).
 
 Model fitting
 -------------

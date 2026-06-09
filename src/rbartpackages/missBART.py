@@ -22,7 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package missBART (`yongchengoh/missBART <https://github.com/yongchengoh/missBART>`_).
+"""
+Wrapper for the R package missBART (`yongchengoh/missBART <https://github.com/yongchengoh/missBART>`_).
 
 Model fitting
 -------------
@@ -31,9 +32,19 @@ Model fitting
     :toctree:
 
     missBART2
+
+Supporting types
+----------------
+
+.. autosummary::
+    :toctree:
+
+    TreePriorParams
+    Hypers
+    Hyperparams
 """
 
 # this facade only re-exports the public symbols of its `_src` counterpart
 # ruff: noqa: F401
 
-from rbartpackages._src.missBART import missBART2
+from rbartpackages._src.missBART import Hyperparams, Hypers, TreePriorParams, missBART2

@@ -22,7 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Base machinery to wrap R functions, shared by the package wrappers.
+"""
+Base machinery to wrap R functions, shared by the package wrappers.
 
 Base class
 ----------
