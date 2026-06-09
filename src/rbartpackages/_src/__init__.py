@@ -1,4 +1,4 @@
-# rbartpackages/src/rbartpackages/dbarts.py
+# rbartpackages/src/rbartpackages/_src/__init__.py
 #
 # Copyright (c) 2026, The rbartpackages Contributors
 #
@@ -22,48 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package dbarts (on CRAN).
+"""Private implementation modules.
 
-Model fitting
--------------
-
-.. autosummary::
-    :toctree:
-
-    bart
-    bart2
-    rbart_vi
-
-Low-level sampler
------------------
-
-.. autosummary::
-    :toctree:
-
-    dbarts
-    dbartsControl
-    dbartsData
-
-Supporting types
-----------------
-
-.. autosummary::
-    :toctree:
-
-    RunSamples
-    String
+The public surface is defined by the same-named facade modules in
+`rbartpackages`, which re-export the public symbols from here.
 """
-
-# this facade only re-exports the public symbols of its `_src` counterpart
-# ruff: noqa: F401
-
-from rbartpackages._src.dbarts import (
-    RunSamples,
-    String,
-    bart,
-    bart2,
-    dbarts,
-    dbartsControl,
-    dbartsData,
-    rbart_vi,
-)

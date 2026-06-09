@@ -28,5 +28,10 @@
 
 .. autoclass:: {{ objname }}
    :members:
-   :inherited-members:
+   {%- if fullname == 'rbartpackages.base.RObjectBase' %}
+   {#- document these two private attributes only on their defining class,
+       not on every wrapper subclass that inherits them #}
+   :private-members: _robject, _rfuncname
+   {%- endif %}
+   :inherited-members: dict, tuple
    :special-members: __call__

@@ -26,13 +26,7 @@ Writing your own wrapper
 ========================
 
 The built-in wrappers are thin subclasses of
-`rbartpackages._base.RObjectBase`; you can wrap any R function the same way.
-
-.. note::
-
-    `~rbartpackages._base.RObjectBase` currently lives in the private module
-    `rbartpackages._base`; it will move to a public location in a future
-    release, so expect the import path to change.
+`rbartpackages.base.RObjectBase`; you can wrap any R function the same way.
 
 First install the R package to wrap, e.g. ``BART`` from CRAN:
 
@@ -40,15 +34,15 @@ First install the R package to wrap, e.g. ``BART`` from CRAN:
 
     install.packages("BART")
 
-Then subclass `~rbartpackages._base.RObjectBase`, setting ``_rfuncname`` to the
-R function to call. R methods of the result are bound with
-`~rbartpackages._base.rmethod`; the decorated body is discarded, so a stub
-suffices:
+Then subclass `~rbartpackages.base.RObjectBase`, setting
+`~rbartpackages.base.RObjectBase._rfuncname` to the R function to call. R
+methods of the result are bound with `~rbartpackages.base.rmethod`; the
+decorated body is discarded, so a stub suffices:
 
 .. code-block:: python
 
     from functools import partial
-    from rbartpackages._base import RObjectBase, rmethod
+    from rbartpackages.base import RObjectBase, rmethod
 
     class gbart(RObjectBase):
         _rfuncname = 'BART::gbart'

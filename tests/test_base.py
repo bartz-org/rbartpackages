@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Tests for the shared wrapper plumbing in `rbartpackages._base`."""
+"""Tests for the shared wrapper plumbing in `rbartpackages.base`."""
 
 import ctypes
 from functools import partial
@@ -31,7 +31,8 @@ from types import SimpleNamespace
 import pytest
 from rpy2 import robjects
 
-from rbartpackages import _base
+from rbartpackages import base
+from rbartpackages._src.base import fork_safe_native_threads
 from tests.util import assert_allclose
 
 
@@ -46,12 +47,12 @@ def test_rfunction() -> None:
     # the decoration must do it
     assert not stats4_loaded()
 
-    @partial(_base.rfunction, library='stats4', rname='mle')
+    @partial(base.rfunction, library='stats4', rname='mle')
     def mle(minuslogl: object, **kw: object) -> object:
         """Maximum likelihood estimation; returns an S4 object."""
         ...
 
-    @partial(_base.rfunction, library='stats4', rname='coef')
+    @partial(base.rfunction, library='stats4', rname='coef')
     def coef(fit: object) -> object:
         """Estimated parameters of a fit."""
         ...
@@ -68,15 +69,15 @@ def test_rfunction_invalid_names() -> None:
     def stub() -> object: ...
 
     with pytest.raises(ValueError, match='Invalid R package name'):
-        _base.rfunction(stub, library='not-a-package')
+        base.rfunction(stub, library='not-a-package')
     with pytest.raises(ValueError, match='Invalid R function name'):
-        _base.rfunction(stub, library='base', rname='not a function')
+        base.rfunction(stub, library='base', rname='not a function')
 
 
 def test_doc_pulled_from_r_when_missing() -> None:
     """A subclass without a docstring gets the R help page as documentation."""
 
-    class Lm(_base.RObjectBase):
+    class Lm(base.RObjectBase):
         _rfuncname = 'stats::lm'
 
     assert Lm.__doc__ is not None
@@ -101,7 +102,7 @@ def test_fork_safe_native_threads(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setattr(ctypes, 'CDLL', lambda name: handle)  # noqa: ARG005
 
-    with _base.fork_safe_native_threads():
+    with fork_safe_native_threads():
         assert calls == [1]
     assert calls == [1, 4]
     assert omp_get_max_threads.restype is ctypes.c_int

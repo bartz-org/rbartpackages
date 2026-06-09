@@ -1,4 +1,4 @@
-# rbartpackages/src/rbartpackages/_base.py
+# rbartpackages/src/rbartpackages/_src/base.py
 #
 # Copyright (c) 2024-2026, The rbartpackages Contributors
 #
@@ -21,6 +21,8 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+"""Implementation of `rbartpackages.base`."""
 
 import ctypes
 from collections.abc import Callable, Iterable, Iterator, Mapping
@@ -59,6 +61,7 @@ except ImportError:  # pragma: no cover - optional dep always present in CI
 else:
 
     def polars_to_r(df: pl.DataFrame) -> object:
+        """Convert a polars dataframe or series to R through pandas."""
         df = df.to_pandas()
         return pandas2ri.py2rpy(df)
 
@@ -74,6 +77,7 @@ except ImportError:  # pragma: no cover - optional dep always present in CI
 else:
 
     def jax_to_r(x: jax.Array) -> object:
+        """Convert a jax array to R, unwrapping 0-dim arrays to scalars."""
         x = np.asarray(x)
         if x.ndim == 0:
             x = x[()]
@@ -87,6 +91,7 @@ NUMPY_CONVERTER = numpy2ri.converter
 
 # converter for BoolVector (why isn't it in the numpy converter?)
 def bool_vector_to_python(x: BoolVector) -> np.ndarray[Any, np.dtype[np.bool_]]:
+    """Convert an R logical vector to a numpy boolean array."""
     return np.array(x, bool)
 
 
@@ -99,6 +104,7 @@ DICT_CONVERTER = conversion.Converter('dict')
 
 
 def dict_to_r(x: dict[str, Any]) -> robjects.ListVector:
+    """Convert a dict to an R named list."""
     return robjects.ListVector(x)
 
 
@@ -108,8 +114,9 @@ DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
 class DataFrame(Protocol):
     """Duck type of the dataframe arguments accepted by the wrappers.
 
-    Both `pandas.DataFrame` and `polars.DataFrame` match; they are converted
-    to R data frames, with categorical columns becoming factors.
+    Both `pandas.DataFrame` and :doc:`polars.DataFrame
+    <polars:reference/dataframe/index>` match; they are converted to R data
+    frames, with categorical columns becoming factors.
     """
 
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
@@ -183,13 +190,6 @@ class RObjectBase:
 
     Subclasses should define the class attribute `_rfuncname`, and declare
     stub methods decorated with `rmethod`.
-
-    _rfuncname : str
-        An R function in the format ``'<package>::<function>``. The function is
-        called with the initialization arguments, converted to R objects, and is
-        expected to return an R object. The attributes of the R object are
-        converted to equivalent Python values and set as attributes of the
-        Python object. The R object itself is assigned to the member `_robject`.
     """
 
     _converter = (
@@ -224,6 +224,15 @@ class RObjectBase:
         return {key: cls._py2r(value) for key, value in kw.items()}
 
     _rfuncname: str = NotImplemented
+    """R function to call, as ``'<package>::<function>'``.
+
+    Called with the initialization arguments converted to R objects; the R
+    object it returns is stored in `_robject`, and that object's named
+    components are converted to Python values and set as attributes.
+    """
+
+    _robject: object
+    """The R object returned by `_rfuncname`, whose components become attributes."""
 
     @property
     def _library(self) -> str:
@@ -258,7 +267,7 @@ class RObjectBase:
         return func(*self._args2r(args), **self._kw2r(kw))
 
     def _set_attrs_from_robject(self) -> None:
-        """Set the named components of `self._robject` as Python attributes."""
+        """Set the named components of `_robject` as Python attributes."""
         if self._has_named_components(self._robject):
             for s, v in self._robject.items():
                 setattr(self, s.replace('.', '_'), self._r2py(v))
@@ -361,9 +370,9 @@ def rproperty(
 ) -> property | Callable[[Callable], property]:
     """Automatically implement a read-only property using the corresponding R field.
 
-    Unlike the attributes snapshotted by `RObjectBase.__init__`, the field is
-    extracted from the R object at each access, so it tracks mutable objects
-    such as reference-class instances.
+    Unlike the attributes `RObjectBase` snapshots at initialization, the field
+    is extracted from the R object at each access, so it tracks mutable
+    objects such as reference-class instances.
 
     Parameters
     ----------

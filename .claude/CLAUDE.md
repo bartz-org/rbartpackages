@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 
 ## Project
 
-rbartpackages — Python wrappers of R BART (Bayesian Additive Regression Trees) packages, built on `rpy2`. It wraps `BART`, `BART3`, `bartMachine`, and `dbarts` behind a uniform interface: arguments are converted to R, the fitted R object's components become Python attributes, and each wrapper class's docstring is augmented with the upstream R documentation (fetched at import time).
+rbartpackages — Python wrappers of R BART (Bayesian Additive Regression Trees) packages, built on `rpy2`. It wraps `BART`, `BART3`, `bartMachine`, `dbarts`, and `missBART` behind a uniform interface: arguments are converted to R, the fitted R object's components become Python attributes, and each wrapper class's docstring is augmented with the upstream R documentation (fetched at import time).
 
 ## Commands
 
@@ -29,18 +29,20 @@ To check the code you write:
     - cheap to run (cached), idempotent; use liberally if R looks broken
 - run the unit tests relevant to your changes with `uv run pytest ...`
 - at the end, run the full suite with `make tests`
+- the changelog is bulk-updated before release, don't edit it
 
 ## Architecture
 
-**Source layout:** `src/rbartpackages/`
+**Source layout:** `src/rbartpackages/`. The implementation lives in `_src/`; each `_src` module has a same-named public facade in `rbartpackages` that re-exports its public symbols (and contains nothing else: the docs documents all imported members of the facades). Inside `_src`, import from `rbartpackages._src.*`, never from the facades.
 
-| Module | Role |
+| Module (in `_src/`) | Role |
 |---|---|
-| `_base.py` | `RObjectBase` (base class that calls an R function, converts args, and exposes the result's components as attributes) and the `rmethod` decorator; rpy2 converters for numpy/pandas/polars/jax/dict/bool |
+| `base.py` | `RObjectBase` (base class that calls an R function, converts args, and exposes the result's components as attributes) and the `rmethod` decorator; rpy2 converters for numpy/pandas/polars/jax/dict/bool |
 | `BART.py` | wrappers for the R package `BART` (`gbart`, `mc_gbart`, ...) |
 | `BART3.py` | wrappers for the R package `BART3` |
 | `bartMachine.py` | wrapper for the R package `bartMachine` (needs Java) |
 | `dbarts.py` | wrappers for the R package `dbarts` (`bart`, `bart2`, `rbart_vi`, ...) |
+| `missBART.py` | wrapper for the R package `missBART` (`missBART2`) |
 
 Importing a wrapper submodule requires the corresponding R package to be installed (the R documentation is pulled at class-definition time). The top-level `import rbartpackages` does not import the submodules, so it works without R.
 
@@ -66,7 +68,7 @@ The R dependencies are pinned in `renv.lock` (regenerate via renv, do not hand-e
     - use dicts as if frozen: `d = dict(d, a=1)` rather than `d['a'] = 1`
     - prefer tuples to lists; make dataclasses frozen unless mutability is needed
     - prefer `if ...: return; else: return` to early returns for readability
-- _src-like layout: don't prepend redundant underscores to private functions (modules already gate the public surface)
+- **_src-like layout:** don't prepend redundant underscores to private functions (the facades already gate the public surface); when adding a public symbol, also re-export it in the facade
 - **WORKAROUND markers:** comments like `# WORKAROUND(jax<99): remove this patch when we bump jax to v99`, enforced by `make lint` against the oldest supported version of the package (also works with python versions and rbartpackages itself)
 
 ## Testing

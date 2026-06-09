@@ -22,67 +22,9 @@
  # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  # SOFTWARE.
  #}
+{# The module docstring carries the curated, semantically-grouped autosummary
+ # tables (scipy-style), so this template only renders the docstring rather than
+ # dumping every function and class into generic alphabetical rubrics. #}
 {{ fullname | escape | underline }}
 
 .. automodule:: {{ fullname }}
-
-{% block functions %}
-{% if functions %}
-.. rubric:: Functions
-
-.. autosummary::
-   :toctree:
-{% for item in functions %}
-   {{ item }}
-{%- endfor %}
-{% endif %}
-{% endblock %}
-
-{% block classes %}
-{% if classes %}
-.. rubric:: Classes
-
-.. autosummary::
-   :toctree:
-{% for item in classes %}
-   {{ item }}
-{%- endfor %}
-{% endif %}
-{% endblock %}
-
-{% block exceptions %}
-{% if exceptions %}
-.. rubric:: Exceptions
-
-.. autosummary::
-   :toctree:
-{% for item in exceptions %}
-   {{ item }}
-{%- endfor %}
-{% endif %}
-{% endblock %}
-
-{% block attributes %}
-{% if attributes %}
-.. rubric:: Module attributes
-
-.. autosummary::
-   :toctree:
-{% for item in attributes %}
-   {{ item }}
-{%- endfor %}
-{% endif %}
-{% endblock %}
-
-{% block modules %}
-{% if modules %}
-.. rubric:: Modules
-
-.. autosummary::
-   :toctree:
-   :recursive:
-{% for item in modules %}
-   {{ item }}
-{%- endfor %}
-{% endif %}
-{% endblock %}

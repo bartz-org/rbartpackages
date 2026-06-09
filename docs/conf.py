@@ -39,6 +39,8 @@ from inspect import getsourcefile, getsourcelines, isclass, unwrap
 from os import getenv
 
 import git
+from docutils import nodes
+from sphinx.ext.intersphinx import missing_reference
 
 # -- Version info ------------------------------------------------------------
 
@@ -67,7 +69,7 @@ import rbartpackages
 # from whatever directory sphinx-build was invoked in (`make docs` uses
 # `docs/`), and without renv the R packages are missing or unpinned.
 with chdir(REPO.working_tree_dir):
-    import rbartpackages._base
+    import rbartpackages.base
 
 # -- Project information -----------------------------------------------------
 
@@ -121,6 +123,42 @@ if sys.version_info >= (3, 14):
             }
 
 
+def _retry_typing_special_forms(app, env, node, contnode) -> nodes.reference | None:  # noqa: ANN001
+    """Retry failed class references to typing special forms as py:obj.
+
+    sphinx-autodoc-typehints renders e.g. ``typing.Self`` with a :py:class:
+    role, but the python inventory lists the typing special forms as py:data,
+    so the reference does not resolve.
+    """
+    if (
+        node.get('refdomain') == 'py'
+        and node.get('reftype') == 'class'
+        and node.get('reftarget', '').startswith('typing.')
+    ):
+        node = node.deepcopy()
+        node['reftype'] = 'obj'
+        return missing_reference(app, env, node, contnode)
+    else:
+        return None
+
+
+# manual targets for modules whose documentation does not put the top-level
+# module object in its intersphinx inventory
+MODULE_DOC_URLS = {
+    'jax': 'https://docs.jax.dev/en/latest/jax.html',
+    'polars': 'https://docs.pola.rs/api/python/stable/reference/index.html',
+}
+
+
+def _link_uninventoried_modules(_app, _env, node, contnode) -> nodes.reference | None:  # noqa: ANN001
+    """Resolve references to the top-level modules listed in `MODULE_DOC_URLS`."""
+    url = MODULE_DOC_URLS.get(node.get('reftarget'))
+    if node.get('refdomain') == 'py' and url is not None:
+        return nodes.reference('', '', contnode, internal=False, refuri=url)
+    else:
+        return None
+
+
 def setup(app) -> None:  # noqa: ANN001
     if sys.version_info >= (3, 14):
         # priority 501 runs after validate_config (default 500) which populates
@@ -128,6 +166,9 @@ def setup(app) -> None:  # noqa: ANN001
         app.connect(
             'env-before-read-docs', _remove_union_aliases_from_mapping, priority=501
         )
+    # priority 501 runs after intersphinx's own handler has given up
+    app.connect('missing-reference', _retry_typing_special_forms, priority=501)
+    app.connect('missing-reference', _link_uninventoried_modules, priority=501)
 
 
 # decide whether to use viewcode or linkcode extension
@@ -185,9 +226,10 @@ autodoc_default_options = {'member-order': 'bysource'}
 # autosummary
 # generate the per-object stub pages at build time
 autosummary_generate = True
-# the wrappers define their public classes directly, so only document objects
-# that belong to each module (imported helpers live in their own module pages).
-autosummary_imported_members = False
+# the documented modules are the facades, which re-export their `_src`
+# counterpart's public symbols and contain nothing else, so every imported
+# member is a public symbol to document.
+autosummary_imported_members = True
 
 # autodoc-typehints
 typehints_use_rtype = False
@@ -206,6 +248,9 @@ napoleon_custom_sections = ['R documentation']
 intersphinx_mapping = dict(
     python=('https://docs.python.org/3', None),
     numpy=('https://numpy.org/doc/stable', None),
+    jax=('https://docs.jax.dev/en/latest', None),
+    pandas=('https://pandas.pydata.org/docs', None),
+    polars=('https://docs.pola.rs/api/python/stable', None),
     rpy2=('https://rpy2.github.io/doc/latest/html', None),
 )
 

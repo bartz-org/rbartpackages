@@ -1,4 +1,4 @@
-# rbartpackages/src/rbartpackages/dbarts.py
+# rbartpackages/src/rbartpackages/base.py
 #
 # Copyright (c) 2026, The rbartpackages Contributors
 #
@@ -22,48 +22,42 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package dbarts (on CRAN).
+"""Base machinery to wrap R functions, shared by the package wrappers.
 
-Model fitting
--------------
-
-.. autosummary::
-    :toctree:
-
-    bart
-    bart2
-    rbart_vi
-
-Low-level sampler
------------------
+Base class
+----------
 
 .. autosummary::
     :toctree:
 
-    dbarts
-    dbartsControl
-    dbartsData
+    RObjectBase
 
-Supporting types
-----------------
+Wrapper decorators
+------------------
 
 .. autosummary::
     :toctree:
 
-    RunSamples
-    String
+    rfunction
+    rmethod
+    rproperty
+
+Protocols
+---------
+
+.. autosummary::
+    :toctree:
+
+    DataFrame
 """
 
 # this facade only re-exports the public symbols of its `_src` counterpart
 # ruff: noqa: F401
 
-from rbartpackages._src.dbarts import (
-    RunSamples,
-    String,
-    bart,
-    bart2,
-    dbarts,
-    dbartsControl,
-    dbartsData,
-    rbart_vi,
+from rbartpackages._src.base import (
+    DataFrame,
+    RObjectBase,
+    rfunction,
+    rmethod,
+    rproperty,
 )
