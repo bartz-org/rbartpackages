@@ -42,7 +42,8 @@ def _values(nl: NamedList) -> list[Any]:
 
 
 class TreePriorParams(TypedDict, total=False):
-    """Tree-prior parameters, the keys of R's ``tree_list``.
+    """
+    Tree-prior parameters, the keys of R's ``tree_list``.
 
     The prior probability of splitting a node at depth ``d`` is
     ``prior_alpha * (1 + d) ** -prior_beta``. Entries left out fall back to
@@ -63,7 +64,8 @@ class TreePriorParams(TypedDict, total=False):
 
 
 class Hypers(TypedDict, total=False):
-    """Prior hyperparameters, the keys of R's ``hypers_list``.
+    """
+    Prior hyperparameters, the keys of R's ``hypers_list``.
 
     Entries left out fall back to ``hypers_list``'s own defaults, noted below;
     `kappa`, `alpha` and `V` also accept ``None`` to request their data-based

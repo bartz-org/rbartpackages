@@ -22,7 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Wrapper for the R package bartMachine (on CRAN).
+"""
+Wrapper for the R package bartMachine (on CRAN).
 
 bartMachine wants data frames, so this module requires the ``pandas`` extra.
 

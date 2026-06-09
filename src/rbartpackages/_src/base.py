@@ -66,7 +66,8 @@ else:
         return pandas2ri.py2rpy(df)
 
     def r_to_polars(df: object) -> pl.DataFrame:
-        """Convert an R data frame to polars through pandas.
+        """
+        Convert an R data frame to polars through pandas.
 
         Registered so that, when polars is installed, it wins over the pandas
         converter for R data frames (the converters are summed with polars
@@ -123,7 +124,8 @@ DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
 
 
 class DataFrame(Protocol):
-    """Duck type of the dataframe arguments accepted by the wrappers.
+    """
+    Duck type of the dataframe arguments accepted by the wrappers.
 
     Both `pandas.DataFrame` and :doc:`polars.DataFrame
     <polars:reference/dataframe/index>` match; they are converted to R data
@@ -135,7 +137,8 @@ class DataFrame(Protocol):
 
 
 def drop_none(kw: dict[str, Any]) -> dict[str, Any]:
-    """Drop the arguments left to ``None`` to let R compute its defaults.
+    """
+    Drop the arguments left to ``None`` to let R compute its defaults.
 
     Parameters
     ----------
@@ -169,7 +172,8 @@ NATIVE_THREAD_POOLS = (
 
 @contextmanager
 def fork_safe_native_threads() -> Iterator[None]:
-    """Cap OpenMP/OpenBLAS thread pools at one thread for the duration.
+    """
+    Cap OpenMP/OpenBLAS thread pools at one thread for the duration.
 
     Workaround for the deadlock that hangs the children forked by R's
     ``parallel::mcparallel`` when GNU libgomp has a live thread pool (see
@@ -256,7 +260,8 @@ class RObjectBase:
 
     @staticmethod
     def _has_named_components(obj: object) -> bool:
-        """Whether `obj` exposes named components to set as attributes.
+        """
+        Whether `obj` exposes named components to set as attributes.
 
         Only an R named list qualifies. A bare matrix (as `bartModelMatrix`
         gives with ``numcut=0``) is excluded by the `ListVector` check: rpy2
@@ -288,7 +293,8 @@ class RObjectBase:
 
     @classmethod
     def _wrap(cls, robject: object) -> Self:
-        """Wrap an existing R object, skipping the call to the R function.
+        """
+        Wrap an existing R object, skipping the call to the R function.
 
         The named components of `robject` are exposed as attributes like in
         `__init__`, but any subclass post-processing of the attributes is
@@ -300,7 +306,8 @@ class RObjectBase:
         return self
 
     def _call_rmethod(self, rname: str, *args: Any, **kw: Any) -> object:
-        """Call the R method `rname` of `_robject` on the converted arguments.
+        """
+        Call the R method `rname` of `_robject` on the converted arguments.
 
         Dispatches on the kind of R object: an S4 object (e.g. a reference
         class such as the `dbarts` sampler) carries its methods as fields, so
@@ -345,7 +352,8 @@ class RObjectBase:
 
 
 def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
-    """Automatically implement a method using the correspoding R method.
+    """
+    Automatically implement a method using the correspoding R method.
 
     Parameters
     ----------
@@ -385,7 +393,8 @@ def rproperty(
     rname: str | None = None,
     wrap: type[RObjectBase] | None = None,
 ) -> property | Callable[[Callable], property]:
-    """Automatically implement a read-only property using the corresponding R field.
+    """
+    Automatically implement a read-only property using the corresponding R field.
 
     Unlike the attributes `RObjectBase` snapshots at initialization, the field
     is extracted from the R object at each access, so it tracks mutable
@@ -434,7 +443,8 @@ def rproperty(
 
 
 def rfunction(func: Callable, *, library: str, rname: str | None = None) -> Callable:
-    """Automatically implement a function using the corresponding R function.
+    """
+    Automatically implement a function using the corresponding R function.
 
     Parameters
     ----------

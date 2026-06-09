@@ -22,7 +22,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Private implementation modules.
+"""
+Private implementation modules.
 
 The public surface is defined by the same-named facade modules in
 `rbartpackages`, which re-export the public symbols from here.

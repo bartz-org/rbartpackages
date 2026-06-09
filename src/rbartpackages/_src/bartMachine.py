@@ -68,7 +68,8 @@ class String(AbstractDtype):
 
 
 def to_response(y: object) -> object:
-    """Convert a numpy array `y` to a bare R vector; pass anything else through.
+    """
+    Convert a numpy array `y` to a bare R vector; pass anything else through.
 
     rpy2's numpy bridge tags even a 1-D array with a ``dim``, which bartMachine
     rejects (it wants a bare atomic vector), so the R vector is built directly:
@@ -512,7 +513,8 @@ class bartMachine(RObjectBase):
         prob_rule_class: float | None = None,
         verbose: bool | None = None,
     ) -> Float64[ndarray, ' m'] | String[ndarray, ' m']:
-        """Posterior-mean predictions at the rows of `new_data`.
+        """
+        Posterior-mean predictions at the rows of `new_data`.
 
         For regression fits, the posterior mean of f(x). For classification
         fits, the probability of the first level (``type='prob'``, the
@@ -554,7 +556,8 @@ def _bart_machine_get_posterior(
 def bart_machine_get_posterior(
     bart_machine: bartMachine, new_data: DataFrame, *, verbose: bool = True
 ) -> Posterior:
-    """Posterior draws of f(x) at the rows of `new_data`.
+    """
+    Posterior draws of f(x) at the rows of `new_data`.
 
     The draws are probabilities of the first level for classification fits.
     R returns a list, exposed here as a `Posterior` dict.
@@ -600,7 +603,8 @@ def get_sigsqs(
 ) -> (
     Float64[ndarray, ' num_iterations_after_burn_in'] | Float64[ndarray, ' num_gibbs+1']
 ):
-    """Posterior draws of the error variance (regression fits only).
+    """
+    Posterior draws of the error variance (regression fits only).
 
     Burn-in draws are dropped unless ``after_burn_in=False``, which also
     keeps the pre-MCMC initial value as first entry.
@@ -635,7 +639,8 @@ def _set_bart_machine_num_cores(num_cores: int, verbose: bool) -> object:
 
 
 def set_bart_machine_num_cores(num_cores: int, *, verbose: bool = True) -> None:
-    """Set the number of threads `bartMachine` uses to fit the model.
+    """
+    Set the number of threads `bartMachine` uses to fit the model.
 
     A package-global setting that persists across fits.
 

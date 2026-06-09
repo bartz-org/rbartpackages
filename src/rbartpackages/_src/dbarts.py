@@ -46,7 +46,8 @@ class String(AbstractDtype):
 
 
 def to_formula(formula: object) -> object:
-    """Convert a string `formula` argument to an R formula; pass anything else through.
+    """
+    Convert a string `formula` argument to an R formula; pass anything else through.
 
     The matrix interface (a `formula` that is really `x_train`) is left
     untouched.
@@ -55,7 +56,8 @@ def to_formula(formula: object) -> object:
 
 
 def to_named_vector(value: object) -> object:
-    """Convert a dict argument to an R named numeric vector; pass anything else through.
+    """
+    Convert a dict argument to an R named numeric vector; pass anything else through.
 
     R takes the named-vector forms of `splitprobs`/`proposalprobs` (and their
     dotted `bart2` spellings) as a way to set per-variable or per-proposal
@@ -232,7 +234,8 @@ class dbartsData(RObjectBase):
 
 
 class RunSamples(TypedDict):
-    """Type of the return value of `dbarts.run`.
+    """
+    Type of the return value of `dbarts.run`.
 
     Unlike the `bart` fit attributes, the observations are on the first axis,
     and multiple chains add a trailing `nchain` axis.
@@ -390,7 +393,8 @@ class dbarts(RObjectBase):
         updateState: bool | None = None,
         numThreads: int | None = None,
     ) -> RunSamples | None:
-        """Run the sampler for `numBurnIn` burn-in plus `numSamples` kept iterations.
+        """
+        Run the sampler for `numBurnIn` burn-in plus `numSamples` kept iterations.
 
         Either count left to ``None`` is filled from the `control` object. The
         draws are returned as a dict of arrays, ``None`` if the sampler is run
@@ -426,7 +430,8 @@ class dbarts(RObjectBase):
         }
 
     def sampleTreesFromPrior(self, *, updateState: bool | None = None) -> None:
-        """Draw the tree structures from the prior, keeping the node parameters.
+        """
+        Draw the tree structures from the prior, keeping the node parameters.
 
         This leaves the sampler in an invalid state until the node parameters
         are drawn too.
@@ -441,7 +446,8 @@ class dbarts(RObjectBase):
         )
 
     def sampleNodeParametersFromPrior(self, *, updateState: bool | None = None) -> None:
-        """Draw the end-node parameters from the prior, keeping the trees.
+        """
+        Draw the end-node parameters from the prior, keeping the trees.
 
         Parameters
         ----------
@@ -453,7 +459,8 @@ class dbarts(RObjectBase):
         )
 
     def copy(self, *, shallow: bool | None = None) -> Self:
-        """Create a deep (default) or shallow copy of the sampler.
+        """
+        Create a deep (default) or shallow copy of the sampler.
 
         The R method is broken once the sampler state has been cached; create
         the sampler with ``dbartsControl(updateState=False)`` to use it.
@@ -482,7 +489,8 @@ class dbarts(RObjectBase):
         *,
         n_threads: int | None = None,
     ) -> Float64[ndarray, ' m'] | Float64[ndarray, 'm ndpost']:
-        """Predict at new points without re-running the sampler.
+        """
+        Predict at new points without re-running the sampler.
 
         Uses the current trees, giving a single prediction per point, or each
         kept set of trees with a ``keepTrees`` control.
@@ -505,7 +513,8 @@ class dbarts(RObjectBase):
         return self._call_rmethod('predict', x_test, **drop_none(kw))
 
     def setControl(self, newControl: dbartsControl) -> None:
-        """Replace the control object of the sampler; needs `n_samples` set.
+        """
+        Replace the control object of the sampler; needs `n_samples` set.
 
         Parameters
         ----------
@@ -515,7 +524,8 @@ class dbarts(RObjectBase):
         self._call_rmethod('setControl', newControl)
 
     def setModel(self, newModel: RS4) -> None:
-        """Replace the model (priors) object of the sampler.
+        """
+        Replace the model (priors) object of the sampler.
 
         Parameters
         ----------
@@ -525,7 +535,8 @@ class dbarts(RObjectBase):
         self._call_rmethod('setModel', newModel)
 
     def setData(self, newData: dbartsData, *, updateState: bool | None = None) -> None:
-        """Replace the data object of the sampler (a `dbartsData`).
+        """
+        Replace the data object of the sampler (a `dbartsData`).
 
         Parameters
         ----------
@@ -541,7 +552,8 @@ class dbarts(RObjectBase):
     def setResponse(
         self, y: Float64[ndarray, ' n'], *, updateState: bool | None = None
     ) -> None:
-        """Replace the response vector.
+        """
+        Replace the response vector.
 
         Parameters
         ----------
@@ -559,7 +571,8 @@ class dbarts(RObjectBase):
         updateScale: bool | None = None,
         updateState: bool | None = None,
     ) -> None:
-        """Replace the offset vector.
+        """
+        Replace the offset vector.
 
         Parameters
         ----------
@@ -581,7 +594,8 @@ class dbarts(RObjectBase):
         *,
         updateState: bool | None = None,
     ) -> None:
-        """Replace the per-chain residual standard deviations.
+        """
+        Replace the per-chain residual standard deviations.
 
         Parameters
         ----------
@@ -601,7 +615,8 @@ class dbarts(RObjectBase):
         updateCutPoints: bool | None = None,
         updateState: bool | None = None,
     ) -> Int32[ndarray, ' 1'] | None:
-        """Replace the predictor matrix (or the 1-based `column`).
+        """
+        Replace the predictor matrix (or the 1-based `column`).
 
         Unforced updates (``forceUpdate=False``, the single-column default)
         return whether the update succeeded: it fails if a tree ends up with
@@ -642,7 +657,8 @@ class dbarts(RObjectBase):
         x_test: Float64[ndarray, 'm cols'] | Float64[ndarray, ' m'],
         column: int | String[ndarray, ' cols'] | None = None,
     ) -> None:
-        """Replace the test predictor matrix (or the 1-based `column`).
+        """
+        Replace the test predictor matrix (or the 1-based `column`).
 
         Parameters
         ----------
@@ -661,7 +677,8 @@ class dbarts(RObjectBase):
         x_test: Float64[ndarray, 'm p'],
         offset_test: Float64[ndarray, ' m'] | float | None,
     ) -> None:
-        """Replace the test predictor matrix and the test offset.
+        """
+        Replace the test predictor matrix and the test offset.
 
         Parameters
         ----------
@@ -674,7 +691,8 @@ class dbarts(RObjectBase):
         self._call_rmethod('setTestPredictorAndOffset', x_test, offset_test)
 
     def setTestOffset(self, offset_test: Float64[ndarray, ' m'] | float | None) -> None:
-        """Replace the test offset vector.
+        """
+        Replace the test offset vector.
 
         Parameters
         ----------
@@ -690,7 +708,8 @@ class dbarts(RObjectBase):
         chainNums: int | Integer[ndarray, ' c'] | None = None,
         sampleNums: int | Integer[ndarray, ' s'] | None = None,
     ) -> None:
-        """Print the given trees to the R console.
+        """
+        Print the given trees to the R console.
 
         Parameters
         ----------
@@ -713,7 +732,8 @@ class dbarts(RObjectBase):
         *,
         treePlotPars: dict[str, float] | None = None,
     ) -> None:
-        """Plot the given tree with R graphics.
+        """
+        Plot the given tree with R graphics.
 
         Parameters
         ----------
@@ -966,7 +986,8 @@ class bart(RObjectBase):
         self._postprocess()
 
     def _postprocess(self) -> None:
-        """Normalize the fit's R components into Python values.
+        """
+        Normalize the fit's R components into Python values.
 
         R fills inapplicable list components with NULL (e.g. ``yhat.test``
         without test data); expose them as None like the dropped ones, unwrap
@@ -1073,7 +1094,8 @@ class bart(RObjectBase):
         type: Literal['ev', 'ppd', 'bart'] | None = None,  # noqa: A002 mirrors the R argument name
         sample: Literal['train', 'test'] | None = None,
     ) -> Float64[ndarray, ' n']:
-        """Return the posterior mean for the training (default) or test points.
+        """
+        Return the posterior mean for the training (default) or test points.
 
         Parameters
         ----------
