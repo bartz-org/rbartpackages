@@ -25,78 +25,43 @@
 """Implementation of `rbartpackages.BART3`."""
 
 from functools import partial
-from typing import Any, Literal, NamedTuple, TypedDict, cast
+from typing import Any, Literal, cast
 
 import numpy as np
-from jaxtyping import AbstractDtype, Float64, Int32, Integer, Real
+from jaxtyping import Float64, Int32, Integer, Real
 from numpy import ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 
 from rbartpackages._src.base import (
     DataFrame,
+    ProcTime,
     RObjectBase,
+    String,  # noqa: F401, re-exported in the facade
+    TreeDraws,
+    bartModelMatrixBase,
+    convert_gbart_predict,
+    convert_treedraws,
     drop_none,
     fork_safe_native_threads,
+    parse_rm_const,
     rmethod,
 )
+from rbartpackages._src.base import PredictBinary as PredictBinaryBase
 
 
-class TreeDraws(TypedDict):
-    """Type of the `mc_gbart.treedraws` attribute."""
+class PredictBinary(PredictBinaryBase):
+    """
+    Type of `mc_gbart.predict`'s return value for binary ('pbart'/'lbart') fits.
 
-    cutpoints: dict[int | str, Float64[ndarray, ' numcut[i]']]
-    """Per-variable grid of candidate split points, keyed by column index or name."""
-
-    trees: str
-    """Posterior tree ensemble serialized in BART's text format (read by `mc_gbart.predict`)."""
-
-
-class PredictBinary(TypedDict):
-    """Type of `mc_gbart.predict`'s return value for binary ('pbart'/'lbart') fits."""
-
-    yhat_test: Float64[ndarray, 'ndpost m']
-    """Posterior latent-function draws at the test points."""
-
-    prob_test: Float64[ndarray, 'ndpost m']
-    """Success-probability draws (inverse probit/logit transform of `yhat_test`)."""
-
-    prob_test_mean: Float64[ndarray, ' m']
-    """Posterior mean of `prob_test`."""
+    Extends the BART version with the `probs` quantile summaries.
+    """
 
     prob_test_lower: Float64[ndarray, ' m']
     """Lower `probs` quantile of `prob_test` (default 2.5%)."""
 
     prob_test_upper: Float64[ndarray, ' m']
     """Upper `probs` quantile of `prob_test` (default 97.5%)."""
-
-    binaryOffset: float
-    """Data centering value on the latent scale."""
-
-
-class String(AbstractDtype):
-    """Represent a `numpy.str_` data dtype."""
-
-    dtypes = r'<U\d+'
-
-
-class ProcTime(NamedTuple):
-    """Python representation of the output of R's ``proc.time``."""
-
-    user_self: float
-    """CPU seconds charged to the R process in user mode."""
-
-    sys_self: float
-    """CPU seconds charged to the R process in system (kernel) mode."""
-
-    elapsed: float
-    """Wall-clock seconds elapsed."""
-
-    user_child: float
-    """User-mode CPU seconds of forked child processes (``mc.gbart`` workers)."""
-
-    sys_child: float
-    """System-mode CPU seconds of forked child processes."""
 
 
 class mc_gbart(RObjectBase):
@@ -238,11 +203,6 @@ class mc_gbart(RObjectBase):
     weight
         Per-shard combination weights of the Modified LISA method (currently
         accepted but unused by BART3).
-
-    Raises
-    ------
-    ValueError
-        If the `rm_const` output of R cannot be parsed.
 
     Notes
     -----
@@ -488,19 +448,10 @@ class mc_gbart(RObjectBase):
         self.proc_time = ProcTime(*map(float, self.proc_time))
         self.rho = self.rho.item()
 
-        if np.all(self.rm_const < 0):
-            # R reports the dropped constant columns as negative indices into
-            # the original design matrix, while varcount has the kept ones
-            _, kept = self.varcount.shape
-            p = kept + self.rm_const.size
-            rm_const = np.ones(p, bool)
-            rm_const[-self.rm_const - 1] = False
-            self.rm_const = np.arange(p, dtype=np.int32)[rm_const]
-        elif np.all(self.rm_const > 0):
-            self.rm_const -= 1
-        else:  # pragma: no cover - R gives all-positive or all-negative indices
-            msg = 'failed to parse rm.const because indices change sign'
-            raise ValueError(msg)
+        # rm.const indexes the original design matrix, of which varcount has
+        # the kept (non-constant) columns
+        _, kept = self.varcount.shape
+        self.rm_const = parse_rm_const(self.rm_const, kept, removed=True)
 
         if self.LPML is not None:
             self.LPML = self.LPML.item()
@@ -514,15 +465,7 @@ class mc_gbart(RObjectBase):
         if self.sigma_mean is not None:
             self.sigma_mean = self.sigma_mean.item()
 
-        r_treedraws = cast(NamedList, self.treedraws)
-        cutpoints: NamedList = r_treedraws.getbyname('cutpoints')
-        self.treedraws = {
-            'cutpoints': {
-                i if it.name is None else it.name.item(): it.value
-                for i, it in enumerate(cutpoints.items())
-            },
-            'trees': r_treedraws.getbyname('trees').item(),
-        }
+        self.treedraws = convert_treedraws(cast(NamedList, self.treedraws))
 
     @partial(rmethod, rname='predict')
     def _predict(self, newdata: Float64[ndarray, 'm p'], **kwargs: Any) -> object:
@@ -608,18 +551,10 @@ class mc_gbart(RObjectBase):
             'dodraws': dodraws,
             'nice': nice,
         }
-        out = self._predict(newdata, **drop_none(kw))
-        if not hasattr(out, 'items'):
-            return out  # continuous: a draws matrix or its column means
-
-        # binary: convert R's list (a NamedList) to a dict of arrays
-        out = cast(NamedList, out)
-        result = {str(it.name).replace('.', '_'): it.value for it in out.items()}
-        result['binaryOffset'] = result['binaryOffset'].item()
-        return result
+        return convert_gbart_predict(self._predict(newdata, **drop_none(kw)))
 
 
-class bartModelMatrix(RObjectBase):
+class bartModelMatrix(bartModelMatrixBase):
     """
     Convert covariates to a matrix and compute the BART cutpoints.
 
@@ -653,92 +588,8 @@ class bartModelMatrix(RObjectBase):
 
     _rfuncname = 'BART3::bartModelMatrix'
 
-    X: Float64[ndarray, 'N p']
-    """Design matrix, with vectors and data frames coerced to numeric and factors expanded to indicators."""
-
-    numcut: Int32[ndarray, ' p']
-    """Number of cutpoints chosen per column."""
-
-    rm_const: Int32[ndarray, '<=p']
-    """0-based indices of the non-constant columns of the expanded design.
-
-    The indices refer to the columns of `X` before removal: ``rm.const=True``
-    removes the constant columns from `X`, `numcut` and `xinfo`, while the
-    default only detects them.
-    """
-
-    xinfo: Float64[ndarray, 'p numcut']
-    """Per-column cutpoint grid, NaN-padded to the maximum cut count."""
-
     grp: Float64[ndarray, ' p'] | None
     """Group size of each expanded factor's indicator columns, or None if no factors."""
-
-    def __new__(
-        cls,
-        X: Float64[ndarray, 'N p'] | DataFrame,
-        numcut: int = 0,
-        *,
-        usequants: bool = False,
-        type: int = 7,  # noqa: A002 because it mirrors the R argument name
-        rm_const: bool = False,
-        cont: bool = False,
-        xinfo: Float64[ndarray, 'p numcut'] | None = None,
-    ) -> Float64[ndarray, 'N p'] | RObjectBase:
-        """Match R: return the bare matrix for ``numcut=0``, else a populated instance."""
-        # __init__ cannot change the return type, so everything happens here;
-        # returning a non-instance (the matrix) skips __init__.
-        kw = {
-            'X': X,
-            'numcut': numcut,
-            'usequants': usequants,
-            'type': type,
-            'rm.const': rm_const,
-            'cont': cont,
-            'xinfo': xinfo,
-        }
-        self = super().__new__(cls)
-        self._robject = self._invoke_rfunc((), drop_none(kw))
-        if not self._has_named_components(self._robject):
-            return self._r2py(self._robject)
-        self._set_attrs_from_robject()
-
-        # grp is R NULL unless the input had factor columns; expose it as None.
-        if self.grp is robjects.NULL:
-            self.grp = None
-
-        if np.all(self.rm_const < 0):
-            # R flags detected-constant columns as negative indices into the
-            # pre-removal design matrix; whether they were also removed from X
-            # depends on the rm_const argument
-            _, n_cols = self.X.shape
-            p = n_cols + self.rm_const.size if rm_const else n_cols
-            keep = np.ones(p, bool)
-            keep[-self.rm_const - 1] = False
-            self.rm_const = np.arange(p, dtype=np.int32)[keep]
-        elif np.all(self.rm_const > 0):
-            self.rm_const -= 1
-        else:  # pragma: no cover - R gives all-positive or all-negative indices
-            msg = 'failed to parse rm.const because indices change sign'
-            raise ValueError(msg)
-
-        return self
-
-    def __init__(
-        self,
-        X: Float64[ndarray, 'N p'] | DataFrame,
-        numcut: int = 0,
-        *,
-        usequants: bool = False,
-        type: int = 7,  # noqa: A002 because it mirrors the R argument name
-        rm_const: bool = False,
-        cont: bool = False,
-        xinfo: Float64[ndarray, 'p numcut'] | None = None,
-    ) -> None:
-        # Everything happens in __new__ because the numcut=0 case changes the
-        # return type; this stub (whose signature mirrors __new__'s for
-        # introspection) only stops the inherited RObjectBase.__init__ from
-        # invoking R a second time.
-        ...
 
 
 class gbart(mc_gbart):
