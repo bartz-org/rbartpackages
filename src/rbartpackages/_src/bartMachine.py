@@ -27,20 +27,13 @@
 from functools import partial
 from typing import Literal, TypedDict, cast
 
-from jaxtyping import Float64, Integer
+from jaxtyping import AbstractDtype, Float64, Integer
 from numpy import ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 from rpy2.robjects.methods import RS4
 
-from rbartpackages._src.base import (
-    DataFrame,
-    RObjectBase,
-    String,
-    drop_none,
-    namedlist_to_dict,
-    rfunction,
-)
+from rbartpackages._src.base import DataFrame, RObjectBase, drop_none, rfunction
 
 # The JVM reads its options only at startup; rJava starts it when the
 # bartMachine namespace is first loaded, which the rfunction decorations below
@@ -66,6 +59,12 @@ class Posterior(TypedDict):
 
     y_hat_posterior_samples: Float64[ndarray, 'm num_iterations_after_burn_in']
     """Posterior draws of f(x), one column per kept MCMC iteration."""
+
+
+class String(AbstractDtype):
+    """Represent a `numpy.str_` data dtype."""
+
+    dtypes = r'<U\d+'
 
 
 def to_response(y: object) -> object:
@@ -579,7 +578,7 @@ def bart_machine_get_posterior(
     out = cast(
         NamedList, _bart_machine_get_posterior(bart_machine, new_data, verbose=verbose)
     )
-    return cast(Posterior, namedlist_to_dict(out))
+    return cast(Posterior, {str(it.name): it.value for it in out.items()})
 
 
 @partial(rfunction, library='bartMachine', rname='bart_machine_num_cores')

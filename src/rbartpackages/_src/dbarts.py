@@ -26,7 +26,7 @@
 
 from typing import Literal
 
-from jaxtyping import Float64, Int32, Integer
+from jaxtyping import AbstractDtype, Float64, Int32, Integer
 from numpy import ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
@@ -36,14 +36,13 @@ from rpy2.robjects.methods import RS4
 # WORKAROUND(python<3.11): import NotRequired, Self, TypedDict from typing
 from typing_extensions import NotRequired, Self, TypedDict
 
-from rbartpackages._src.base import (
-    DataFrame,
-    RObjectBase,
-    String,
-    drop_none,
-    namedlist_to_dict,
-    rproperty,
-)
+from rbartpackages._src.base import DataFrame, RObjectBase, drop_none, rproperty
+
+
+class String(AbstractDtype):
+    """Represent a `numpy.str_` data dtype."""
+
+    dtypes = r'<U\d+'
 
 
 def to_formula(formula: object) -> object:
@@ -425,7 +424,10 @@ class dbarts(RObjectBase):
         out = self._call_rmethod('run', **drop_none(kw))
         if out is robjects.NULL:
             return None  # R returns invisible NULL for zero samples
-        return namedlist_to_dict(out)
+        return {
+            str(it.name): None if it.value is robjects.NULL else it.value
+            for it in out.items()
+        }
 
     def sampleTreesFromPrior(self, *, updateState: bool | None = None) -> None:
         """
