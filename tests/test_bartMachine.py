@@ -27,12 +27,11 @@
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from inspect import Parameter, signature
+from inspect import Parameter
 
 import numpy as np
 import pandas as pd
 import pytest
-from numpy import ndarray
 from rpy2 import robjects
 from rpy2.rinterface_lib.embedded import RRuntimeError
 
@@ -41,7 +40,10 @@ from tests.util import (
     assert_allclose,
     assert_array_equal,
     assert_close_matrices,
+    evaluated_r_formals,
+    has_var_keyword,
     int_seed,
+    mapped_params,
 )
 
 NTREE = 10
@@ -345,52 +347,6 @@ def test_optional_inputs(data: Data, rng: np.random.Generator) -> None:
     first, second = bm.interaction_constraints
     assert_array_equal(first, np.array([0.0, 1.0]))
     assert_array_equal(second, np.array([2.0]))
-
-
-def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
-    """Evaluate the argument defaults of an R function in isolation.
-
-    Defaults that are NULL, missing, or that cannot be evaluated standalone
-    (e.g. because they reference other arguments) are omitted.
-    """
-    rdefaults = robjects.r(f"""
-        Filter(
-            Negate(is.null),
-            lapply(
-                formals({rfuncname}),
-                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
-            )
-        )
-    """)
-    return {
-        name: np.asarray(value)
-        for name, value in zip(rdefaults.names, rdefaults, strict=True)
-    }
-
-
-def mapped_params(
-    obj: Callable, *, skip: set[str] = frozenset()
-) -> dict[str, Parameter]:
-    """Return the named parameters of `obj`, keyed by R name.
-
-    bartMachine's R arguments already use Python-style underscores, so the
-    names map across verbatim. Skips ``self`` and the ``*args``/``**kwargs``
-    catch-alls, which have no R formal counterpart.
-    """
-    variadic = {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}
-    return {
-        name.removesuffix('_'): param
-        for name, param in signature(obj).parameters.items()
-        if name not in {'self', *skip} and param.kind not in variadic
-    }
-
-
-def has_var_keyword(obj: Callable) -> bool:
-    """Whether `obj` has a ``**kwargs`` catch-all (forwarding R's ``...``)."""
-    return any(
-        param.kind is Parameter.VAR_KEYWORD
-        for param in signature(obj).parameters.values()
-    )
 
 
 # the wrapper callables, their R name, and the R arguments deliberately left

@@ -25,17 +25,22 @@
 """Implementation of `rbartpackages.BART`."""
 
 from functools import partial
-from typing import Any, Literal, NamedTuple, TypedDict, cast
+from typing import Any, Literal, NamedTuple, TypedDict
 
-import numpy as np
-from jaxtyping import AbstractDtype, Bool, Float64, Int32, Integer
+from jaxtyping import Bool, Float64, Int32, Integer
 from numpy import ndarray
 from rpy2 import robjects
-from rpy2.rlike.container import NamedList
 
+from rbartpackages._src.bartcommon import (
+    convert_gbart_predict,
+    convert_treedraws,
+    parse_rm_const,
+    populate_model_matrix,
+)
 from rbartpackages._src.base import (
     DataFrame,
     RObjectBase,
+    String,
     drop_none,
     fork_safe_native_threads,
     rmethod,
@@ -66,12 +71,6 @@ class PredictBinary(TypedDict):
 
     binaryOffset: float
     """Data centering value on the latent scale."""
-
-
-class String(AbstractDtype):
-    """Represent a `numpy.str_` data dtype."""
-
-    dtypes = r'<U\d+'
 
 
 class ProcTime(NamedTuple):
@@ -211,11 +210,6 @@ class mc_gbart(RObjectBase):
         Seed of the chains' L'Ecuyer-CMRG RNG streams; ``None`` seeds from
         the clock and process ID. `gbart` ignores it: seed R directly with
         ``set.seed``.
-
-    Raises
-    ------
-    ValueError
-        If the `rm_const` output of R cannot be parsed.
 
     Notes
     -----
@@ -409,32 +403,16 @@ class mc_gbart(RObjectBase):
         self.offset = self.offset.item()
         self.proc_time = ProcTime(*map(float, self.proc_time))
 
-        if np.all(self.rm_const < 0):
-            # R reports the dropped constant columns as negative indices into
-            # the original design matrix, while varcount has the kept ones
-            _, kept = self.varcount.shape
-            p = kept + self.rm_const.size
-            rm_const = np.ones(p, bool)
-            rm_const[-self.rm_const - 1] = False
-            self.rm_const = np.arange(p, dtype=np.int32)[rm_const]
-        elif np.all(self.rm_const > 0):
-            self.rm_const -= 1
-        else:  # pragma: no cover - R gives all-positive or all-negative indices
-            msg = 'failed to parse rm.const because indices change sign'
-            raise ValueError(msg)
+        # varcount has the kept columns, so pass their count to reconstruct the
+        # original column set from the negative (dropped) indices
+        self.rm_const = parse_rm_const(
+            self.rm_const, self.varcount.shape[1], removed=True
+        )
 
         if self.sigma_mean is not None:
             self.sigma_mean = self.sigma_mean.item()
 
-        r_treedraws = cast(NamedList, self.treedraws)
-        cutpoints: NamedList = r_treedraws.getbyname('cutpoints')
-        self.treedraws = {
-            'cutpoints': {
-                i if it.name is None else it.name.item(): it.value
-                for i, it in enumerate(cutpoints.items())
-            },
-            'trees': r_treedraws.getbyname('trees').item(),
-        }
+        self.treedraws = convert_treedraws(self.treedraws)
 
     @partial(rmethod, rname='predict')
     def _predict(self, newdata: Float64[ndarray, 'm p'], **kwargs: Any) -> object:
@@ -499,15 +477,7 @@ class mc_gbart(RObjectBase):
         own column-count check) are not exposed.
         """
         kw = {'mc.cores': mc_cores, 'openmp': openmp, 'dodraws': dodraws, 'nice': nice}
-        out = self._predict(newdata, **drop_none(kw))
-        if not hasattr(out, 'items'):
-            return out  # continuous: a draws matrix or its column means
-
-        # binary: convert R's list (a NamedList) to a dict of arrays
-        out = cast(NamedList, out)
-        result = {str(it.name).replace('.', '_'): it.value for it in out.items()}
-        result['binaryOffset'] = result['binaryOffset'].item()
-        return result
+        return convert_gbart_predict(self._predict(newdata, **drop_none(kw)))
 
 
 class bartModelMatrix(RObjectBase):
@@ -589,31 +559,7 @@ class bartModelMatrix(RObjectBase):
             'xinfo': xinfo,
         }
         self = super().__new__(cls)
-        self._robject = self._invoke_rfunc((), drop_none(kw))
-        if not self._has_named_components(self._robject):
-            return self._r2py(self._robject)
-        self._set_attrs_from_robject()
-
-        # grp is R NULL for matrix input; expose it as None.
-        if self.grp is robjects.NULL:
-            self.grp = None
-
-        if np.all(self.rm_const < 0):
-            # R flags detected-constant columns as negative indices into the
-            # pre-removal design matrix; whether they were also removed from X
-            # depends on the rm_const argument
-            _, n_cols = self.X.shape
-            p = n_cols + self.rm_const.size if rm_const else n_cols
-            keep = np.ones(p, bool)
-            keep[-self.rm_const - 1] = False
-            self.rm_const = np.arange(p, dtype=np.int32)[keep]
-        elif np.all(self.rm_const > 0):
-            self.rm_const -= 1
-        else:  # pragma: no cover - R gives all-positive or all-negative indices
-            msg = 'failed to parse rm.const because indices change sign'
-            raise ValueError(msg)
-
-        return self
+        return populate_model_matrix(self, kw, removed=rm_const)
 
     def __init__(
         self,

@@ -24,9 +24,8 @@
 
 """Tests for the missBART wrapper."""
 
-from collections.abc import Callable
 from dataclasses import dataclass
-from inspect import Parameter, signature
+from inspect import Parameter
 
 import numpy as np
 import pytest
@@ -35,7 +34,13 @@ from numpy import ndarray
 from rpy2 import robjects
 
 from rbartpackages import missBART
-from tests.util import assert_array_equal, int_seed
+from tests.util import (
+    assert_array_equal,
+    evaluated_r_formals,
+    has_var_keyword,
+    int_seed,
+    mapped_params,
+)
 
 N_TREES = 2
 BURN = 3
@@ -210,50 +215,6 @@ def test_explicit_tree_prior_params(rng: np.random.Generator) -> None:
         ),
     )
     assert fit.y_post.shape == (ITERS, *data.y.shape)
-
-
-def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
-    """Evaluate the argument defaults of an R function in isolation.
-
-    Defaults that are NULL, missing, or that cannot be evaluated standalone
-    (e.g. because they reference other arguments) are omitted.
-    """
-    rdefaults = robjects.r(f"""
-        Filter(
-            Negate(is.null),
-            lapply(
-                formals({rfuncname}),
-                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
-            )
-        )
-    """)
-    return {
-        name: np.asarray(value)
-        for name, value in zip(rdefaults.names, rdefaults, strict=True)
-    }
-
-
-def mapped_params(obj: Callable) -> dict[str, Parameter]:
-    """Return the named parameters of `obj`, keyed by R name.
-
-    missBART2's R arguments already use Python-style underscores, so the names
-    map across verbatim. Skips ``self`` and the ``**kwargs`` catch-all, which
-    have no R formal counterpart.
-    """
-    variadic = {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}
-    return {
-        name.removesuffix('_'): param
-        for name, param in signature(obj).parameters.items()
-        if name != 'self' and param.kind not in variadic
-    }
-
-
-def has_var_keyword(obj: Callable) -> bool:
-    """Whether `obj` has a ``**kwargs`` catch-all (forwarding R's ``...``)."""
-    return any(
-        param.kind is Parameter.VAR_KEYWORD
-        for param in signature(obj).parameters.values()
-    )
 
 
 # vestigial R arguments accepted but never used by the missBART2 implementation,

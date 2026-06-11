@@ -32,7 +32,7 @@ added in BART3). Tests of BART-only behavior skip on BART3.
 
 import math
 from dataclasses import dataclass
-from inspect import Parameter, signature
+from inspect import Parameter
 from types import ModuleType
 
 import numpy as np
@@ -44,7 +44,14 @@ from rpy2 import robjects
 from rpy2.rinterface_lib.embedded import RRuntimeError
 
 from rbartpackages import BART, BART3
-from tests.util import assert_array_equal, assert_close_matrices
+from tests.util import (
+    RegressionData,
+    assert_array_equal,
+    assert_close_matrices,
+    evaluated_r_formals,
+    mapped_params,
+    regression_arrays,
+)
 
 NDPOST = 20
 NSKIP = 20
@@ -58,22 +65,8 @@ def pkg(request: pytest.FixtureRequest) -> ModuleType:
 
 
 @dataclass(frozen=True)
-class Data:
-    """A small regression dataset."""
-
-    x: Float64[ndarray, 'n p']
-    """Predictors."""
-
-    y: Float64[ndarray, ' n']
-    """Outcomes, the first predictor plus noise."""
-
-    x_test: Float64[ndarray, 'm p']
-    """Test-set predictors."""
-
-    @property
-    def biny(self) -> Float64[ndarray, ' n']:
-        """Outcomes binarized at their median, for binary-outcome fits."""
-        return (self.y > np.median(self.y)).astype(float)
+class Data(RegressionData):
+    """A small regression dataset, with constant-column variants for `rm_const`."""
 
     @property
     def x_const(self) -> Float64[ndarray, 'n p+1']:
@@ -89,11 +82,7 @@ class Data:
 @pytest.fixture
 def data(rng: np.random.Generator) -> Data:
     """Generate a small regression dataset."""
-    n, p = 30, 3
-    x = rng.standard_normal((n, p))
-    y = x[:, 0] + 0.1 * rng.standard_normal(n)
-    x_test = rng.standard_normal((7, p))
-    return Data(x, y, x_test)
+    return Data(*regression_arrays(rng))
 
 
 def test_docstring(pkg: ModuleType) -> None:
@@ -334,27 +323,6 @@ def test_predict_explicit_signature(pkg: ModuleType, data: Data) -> None:
         )
 
 
-def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
-    """Evaluate the argument defaults of an R function in isolation.
-
-    Defaults that are NULL, missing, or that cannot be evaluated standalone
-    (e.g. because they reference other arguments) are omitted.
-    """
-    rdefaults = robjects.r(f"""
-        Filter(
-            Negate(is.null),
-            lapply(
-                formals({rfuncname}),
-                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
-            )
-        )
-    """)
-    return {
-        name: np.asarray(value)
-        for name, value in zip(rdefaults.names, rdefaults, strict=True)
-    }
-
-
 def test_signature_defaults_match_r(pkg: ModuleType) -> None:
     """The explicit signatures stay in sync with the wrapped R functions.
 
@@ -375,12 +343,8 @@ def test_signature_defaults_match_r(pkg: ModuleType) -> None:
     ]
     for cls, unexposed, ignored in cases:
         rfuncname = cls._rfuncname
-        params = {
-            # the signatures use _ where R uses . and trail it to dodge
-            # python keywords
-            name.removesuffix('_').replace('_', '.'): param
-            for name, param in signature(cls).parameters.items()
-        }
+        # the signatures use _ where R uses . and trail it to dodge python keywords
+        params = mapped_params(cls, dots=True)
         rnames = set(robjects.r(f'names(formals({rfuncname}))'))
         assert params.keys() <= rnames, rfuncname
         assert rnames - params.keys() == unexposed, rfuncname
@@ -430,12 +394,8 @@ def test_predict_signature_matches_r(pkg: ModuleType) -> None:
     # with the fit's own data (x.test, treedraws)
     rnames -= {'...', 'object', 'newdata', 'x.test', 'treedraws'}
 
-    params = {
-        # the signature uses _ where R uses .
-        name.replace('_', '.'): param
-        for name, param in signature(pkg.mc_gbart.predict).parameters.items()
-        if name not in {'self', 'newdata'}
-    }
+    # the signature uses _ where R uses .
+    params = mapped_params(pkg.mc_gbart.predict, skip={'newdata'}, dots=True)
     assert params.keys() <= rnames
     assert rnames - params.keys() == unexposed
     for name, param in params.items():

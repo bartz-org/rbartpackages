@@ -52,7 +52,6 @@ Supporting types
     :toctree:
 
     RunSamples
-    String
 """
 
 # this facade only re-exports the public symbols of its `_src` counterpart
@@ -60,7 +59,6 @@ Supporting types
 
 from rbartpackages._src.dbarts import (
     RunSamples,
-    String,
     bart,
     bart2,
     dbarts,

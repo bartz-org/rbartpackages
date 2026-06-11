@@ -27,7 +27,7 @@
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
-from inspect import Parameter, signature
+from inspect import Parameter
 
 import numpy as np
 import pandas as pd
@@ -39,7 +39,15 @@ from rpy2.rinterface_lib.embedded import RRuntimeError
 from rpy2.robjects.language import LangVector
 
 from rbartpackages import dbarts
-from tests.util import assert_array_equal, assert_close_matrices
+from tests.util import (
+    RegressionData,
+    assert_array_equal,
+    assert_close_matrices,
+    evaluated_r_formals,
+    has_var_keyword,
+    mapped_params,
+    regression_arrays,
+)
 
 NDPOST = 20
 NSKIP = 20
@@ -52,22 +60,8 @@ def phi(x: Float64[ndarray, '...']) -> Float64[ndarray, '...']:
 
 
 @dataclass(frozen=True)
-class Data:
-    """A small regression dataset."""
-
-    x: Float64[ndarray, 'n p']
-    """Predictors."""
-
-    y: Float64[ndarray, ' n']
-    """Outcomes, the first predictor plus noise."""
-
-    x_test: Float64[ndarray, 'm p']
-    """Test-set predictors."""
-
-    @property
-    def biny(self) -> Float64[ndarray, ' n']:
-        """Outcomes binarized at their median, for binary-outcome fits."""
-        return (self.y > np.median(self.y)).astype(float)
+class Data(RegressionData):
+    """A small regression dataset, with data-frame views for the formula interfaces."""
 
     @property
     def frame(self) -> pd.DataFrame:
@@ -84,11 +78,7 @@ class Data:
 @pytest.fixture
 def data(rng: np.random.Generator) -> Data:
     """Generate a small regression dataset."""
-    n, p = 30, 3
-    x = rng.standard_normal((n, p))
-    y = x[:, 0] + 0.1 * rng.standard_normal(n)
-    x_test = rng.standard_normal((7, p))
-    return Data(x, y, x_test)
+    return Data(*regression_arrays(rng))
 
 
 def test_docstring() -> None:
@@ -558,51 +548,6 @@ def test_dbarts_show_trees(data: Data, capfd: pytest.CaptureFixture) -> None:
         robjects.r('invisible(dev.off())')
 
 
-def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
-    """Evaluate the argument defaults of an R function in isolation.
-
-    Defaults that are NULL, missing, or that cannot be evaluated standalone
-    (e.g. because they reference other arguments) are omitted.
-    """
-    rdefaults = robjects.r(f"""
-        Filter(
-            Negate(is.null),
-            lapply(
-                formals({rfuncname}),
-                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
-            )
-        )
-    """)
-    return {
-        name: np.asarray(value)
-        for name, value in zip(rdefaults.names, rdefaults, strict=True)
-    }
-
-
-def mapped_params(
-    obj: Callable, *, skip: set[str] = frozenset()
-) -> dict[str, Parameter]:
-    """Return the named parameters of `obj`, keyed by R name (``_`` to ``.``).
-
-    Skips ``self`` and the ``*args``/``**kwargs`` catch-alls, which have no R
-    formal counterpart.
-    """
-    variadic = {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}
-    return {
-        name.removesuffix('_').replace('_', '.'): param
-        for name, param in signature(obj).parameters.items()
-        if name not in {'self', *skip} and param.kind not in variadic
-    }
-
-
-def has_var_keyword(obj: Callable) -> bool:
-    """Whether `obj` has a ``**kwargs`` catch-all (forwarding R's ``...``)."""
-    return any(
-        param.kind is Parameter.VAR_KEYWORD
-        for param in signature(obj).parameters.values()
-    )
-
-
 # the wrapper constructors and the R arguments deliberately left unexposed (none:
 # the constructors expose every named R argument, forwarding `...` where present)
 CONSTRUCTOR_CASES = [
@@ -630,7 +575,7 @@ def test_signature_defaults_match_r(cls: type, unexposed: set[str]) -> None:
     silently diverging.
     """
     rfuncname = cls._rfuncname
-    params = mapped_params(cls)
+    params = mapped_params(cls, dots=True)
     rnames = set(robjects.r(f'names(formals({rfuncname}))'))
     # R's `...` is forwarded by a **kwargs catch-all, not a named parameter
     assert ('...' in rnames) == has_var_keyword(cls), rfuncname
@@ -681,7 +626,7 @@ def test_generic_signatures_match_r(
     """
     method = f'getS3method("{generic}", "{rclass}", envir = asNamespace("dbarts"))'
     rnames = set(robjects.r(f'names(formals({method}))')) - bound
-    params = mapped_params(meth, skip={'newdata'})
+    params = mapped_params(meth, skip={'newdata'}, dots=True)
     assert params.keys() <= rnames
     assert rnames - params.keys() == unexposed
     for name, param in params.items():
@@ -724,7 +669,7 @@ def test_sampler_method_signatures_match_r(method: str, unexposed: set[str]) -> 
     refmethods = 'dbarts:::dbartsSampler$def@refMethods'
     rformals = robjects.r(f'names(formals({refmethods}${method}))')
     rnames = set() if rformals is robjects.NULL else set(rformals)
-    params = mapped_params(getattr(dbarts.dbarts, method))
+    params = mapped_params(getattr(dbarts.dbarts, method), dots=True)
     assert params.keys() <= rnames, method
     assert rnames - params.keys() == unexposed, method
     for name, param in params.items():
