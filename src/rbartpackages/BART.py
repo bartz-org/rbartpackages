@@ -51,7 +51,6 @@ Supporting types
     TreeDraws
     PredictBinary
     ProcTime
-    String
 """
 
 # this facade only re-exports the public symbols of its `_src` counterpart
@@ -60,7 +59,6 @@ Supporting types
 from rbartpackages._src.BART import (
     PredictBinary,
     ProcTime,
-    String,
     TreeDraws,
     bartModelMatrix,
     gbart,

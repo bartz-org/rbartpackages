@@ -34,7 +34,9 @@ from textwrap import indent
 from typing import Any, Protocol
 
 import numpy as np
+from jaxtyping import AbstractDtype
 from rpy2 import robjects
+from rpy2.rlike.container import NamedList
 from rpy2.robjects import BoolVector, conversion, numpy2ri
 from rpy2.robjects.help import Package
 from rpy2.robjects.methods import RS4
@@ -136,6 +138,12 @@ class DataFrame(Protocol):
         """Export as an Arrow PyCapsule stream."""
 
 
+class String(AbstractDtype):
+    """Represent a `numpy.str_` data dtype."""
+
+    dtypes = r'<U\d+'
+
+
 def drop_none(kw: dict[str, Any]) -> dict[str, Any]:
     """
     Drop the arguments left to ``None`` to let R compute its defaults.
@@ -150,6 +158,25 @@ def drop_none(kw: dict[str, Any]) -> dict[str, Any]:
     The arguments whose value is not ``None``.
     """
     return {name: value for name, value in kw.items() if value is not None}
+
+
+def namedlist_to_dict(namedlist: NamedList) -> dict[str, Any]:
+    """
+    Convert an R named list to a dict.
+
+    Parameters
+    ----------
+    namedlist
+        The converted R list.
+
+    Returns
+    -------
+    The list values by name, with ``.`` in names replaced by ``_`` and NULL values by ``None``.
+    """
+    return {
+        str(it.name).replace('.', '_'): None if it.value is robjects.NULL else it.value
+        for it in namedlist.items()
+    }
 
 
 R_IDENTIFIER = r'(?:[a-zA-Z]|\.(?![0-9]))[a-zA-Z0-9._]*'

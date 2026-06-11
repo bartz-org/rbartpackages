@@ -65,7 +65,6 @@ Supporting types
     :toctree:
 
     Posterior
-    String
 """
 
 # this facade only re-exports the public symbols of its `_src` counterpart
@@ -73,7 +72,6 @@ Supporting types
 
 from rbartpackages._src.bartMachine import (
     Posterior,
-    String,
     bart_machine_get_posterior,
     bart_machine_num_cores,
     bartMachine,

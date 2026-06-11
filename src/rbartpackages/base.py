@@ -50,6 +50,14 @@ Protocols
     :toctree:
 
     DataFrame
+
+Array dtypes
+------------
+
+.. autosummary::
+    :toctree:
+
+    String
 """
 
 # this facade only re-exports the public symbols of its `_src` counterpart
@@ -58,6 +66,7 @@ Protocols
 from rbartpackages._src.base import (
     DataFrame,
     RObjectBase,
+    String,
     rfunction,
     rmethod,
     rproperty,
