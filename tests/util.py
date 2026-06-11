@@ -24,10 +24,15 @@
 
 """Functions intended to be shared across the test suite."""
 
+from collections.abc import Callable
+from dataclasses import dataclass
+from inspect import Parameter, signature
 from operator import ge, le
 from typing import Any
 
 import numpy as np
+from jaxtyping import Float64
+from numpy import ndarray
 from numpy.linalg import norm
 from numpy.testing import assert_allclose as _np_assert_allclose  # noqa: TID251
 from numpy.testing import assert_array_equal as _np_assert_array_equal  # noqa: TID251
@@ -180,3 +185,88 @@ def assert_array_equal(
 def int_seed(rng: np.random.Generator) -> int:
     """Draw an integer random seed from a numpy random generator."""
     return int(rng.integers(0, 2**31 - 1))
+
+
+@dataclass(frozen=True)
+class RegressionData:
+    """A small regression dataset shared by the BART-family wrapper tests."""
+
+    x: Float64[ndarray, 'n p']
+    """Predictors."""
+
+    y: Float64[ndarray, ' n']
+    """Outcomes, the first predictor plus noise."""
+
+    x_test: Float64[ndarray, 'm p']
+    """Test-set predictors."""
+
+    @property
+    def biny(self) -> Float64[ndarray, ' n']:
+        """Outcomes binarized at their median, for binary-outcome fits."""
+        return (self.y > np.median(self.y)).astype(float)
+
+
+def regression_arrays(
+    rng: np.random.Generator,
+) -> tuple[Float64[ndarray, 'n p'], Float64[ndarray, ' n'], Float64[ndarray, 'm p']]:
+    """Generate the ``(x, y, x_test)`` of a small regression dataset (n=30, p=3, m=7)."""
+    n, p = 30, 3
+    x = rng.standard_normal((n, p))
+    y = x[:, 0] + 0.1 * rng.standard_normal(n)
+    x_test = rng.standard_normal((7, p))
+    return x, y, x_test
+
+
+def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
+    """Evaluate the argument defaults of an R function in isolation.
+
+    Defaults that are NULL, missing, or that cannot be evaluated standalone
+    (e.g. because they reference other arguments) are omitted.
+    """
+    from rpy2 import robjects  # noqa: PLC0415, deferred to keep R optional
+
+    rdefaults = robjects.r(f"""
+        Filter(
+            Negate(is.null),
+            lapply(
+                formals({rfuncname}),
+                function(d) tryCatch(eval(d, baseenv()), error = function(e) NULL)
+            )
+        )
+    """)
+    return {
+        name: np.asarray(value)
+        for name, value in zip(rdefaults.names, rdefaults, strict=True)
+    }
+
+
+def mapped_params(
+    obj: Callable, *, skip: set[str] = frozenset(), dots: bool = False
+) -> dict[str, Parameter]:
+    """Return the named parameters of `obj`, keyed by R name.
+
+    Strips a trailing underscore (used to dodge Python keywords) from each
+    name; with ``dots=True`` also maps ``_`` to ``.`` for R packages whose
+    argument names use dots (the others already use Python-style underscores).
+    Skips ``self``, anything in `skip`, and the ``*args``/``**kwargs``
+    catch-alls, which have no R formal counterpart.
+    """
+    variadic = {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}
+
+    def rname(name: str) -> str:
+        name = name.removesuffix('_')
+        return name.replace('_', '.') if dots else name
+
+    return {
+        rname(name): param
+        for name, param in signature(obj).parameters.items()
+        if name not in {'self', *skip} and param.kind not in variadic
+    }
+
+
+def has_var_keyword(obj: Callable) -> bool:
+    """Whether `obj` has a ``**kwargs`` catch-all (forwarding R's ``...``)."""
+    return any(
+        param.kind is Parameter.VAR_KEYWORD
+        for param in signature(obj).parameters.values()
+    )
