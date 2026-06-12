@@ -31,9 +31,9 @@ import numpy as np
 import pytest
 from jaxtyping import Float64
 from numpy import ndarray
-from rpy2 import robjects
 
 from rbartpackages import missBART
+from rbartpackages._src.base import robjects_r
 from tests.util import (
     assert_array_equal,
     evaluated_r_formals,
@@ -92,7 +92,7 @@ def fit_missBART2(
     data: Data, rng: np.random.Generator, **kw: object
 ) -> missBART.missBART2:
     """Fit `missBART2` on `data` with small, fast MCMC settings."""
-    robjects.r['set.seed'](int_seed(rng))
+    robjects_r['set.seed'](int_seed(rng))
     return missBART.missBART2(
         data.x,
         data.y,
@@ -238,7 +238,7 @@ def test_signature_defaults_match_r() -> None:
     """
     rfuncname = 'missBART::missBART2'
     params = mapped_params(missBART.missBART2)
-    rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+    rnames = set(robjects_r(f'names(formals({rfuncname}))'))
     # R's `...` is forwarded by a **kwargs catch-all, not a named parameter
     assert ('...' in rnames) == has_var_keyword(missBART.missBART2)
     rnames -= {'...'}

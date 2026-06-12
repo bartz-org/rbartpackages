@@ -42,6 +42,7 @@ from rbartpackages._src.base import (
     String,
     drop_none,
     namedlist_to_dict,
+    robjects_r,
     rproperty,
 )
 
@@ -66,7 +67,7 @@ def to_named_vector(value: object) -> object:
     """
     if isinstance(value, dict):
         vector = robjects.FloatVector(list(value.values()))
-        return robjects.r('setNames')(vector, list(value.keys()))
+        return robjects_r('setNames')(vector, list(value.keys()))
     return value
 
 

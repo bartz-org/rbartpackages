@@ -39,6 +39,7 @@ from rpy2.rinterface_lib.embedded import RRuntimeError
 from rpy2.robjects.language import LangVector
 
 from rbartpackages import dbarts
+from rbartpackages._src.base import robjects_r
 from tests.util import (
     RegressionData,
     assert_array_equal,
@@ -415,7 +416,7 @@ def test_dbarts(data: Data) -> None:
 
     # replacing the response redirects the fit
     sampler.setResponse(-data.y)
-    y = robjects.r('function(d) d@y')(sampler.data._robject)
+    y = robjects_r('function(d) d@y')(sampler.data._robject)
     assert_array_equal(np.asarray(y), -data.y)
     out3 = sampler.run(NSKIP, NDPOST)
     assert_close_matrices(out3['train'].mean(axis=1), -data.y, rtol=0.5)
@@ -495,10 +496,10 @@ def test_dbarts_setters(data: Data) -> None:
     # (absorbed by either the trees or sigma), so where the short-run draws
     # sit depends on the seed
     sampler.setOffset(np.full(n, 1e3))
-    offset = robjects.r('function(d) d@offset')(sampler.data._robject)
+    offset = robjects_r('function(d) d@offset')(sampler.data._robject)
     assert_array_equal(np.asarray(offset), np.full(n, 1e3))
     sampler.setOffset(0.0)  # scalars are expanded to the n observations
-    offset = robjects.r('function(d) d@offset')(sampler.data._robject)
+    offset = robjects_r('function(d) d@offset')(sampler.data._robject)
     assert_array_equal(np.asarray(offset), np.zeros(n))
 
     # the model (priors) can be grafted from another sampler, as the
@@ -541,11 +542,11 @@ def test_dbarts_show_trees(data: Data, capfd: pytest.CaptureFixture) -> None:
     assert capfd.readouterr().out.strip()
 
     # plot to a null device to keep the test headless
-    robjects.r('pdf(NULL)')
+    robjects_r('pdf(NULL)')
     try:
         sampler.plotTree(1)
     finally:
-        robjects.r('invisible(dev.off())')
+        robjects_r('invisible(dev.off())')
 
 
 # the wrapper constructors and the R arguments deliberately left unexposed (none:
@@ -576,7 +577,7 @@ def test_signature_defaults_match_r(cls: type, unexposed: set[str]) -> None:
     """
     rfuncname = cls._rfuncname
     params = mapped_params(cls, dots=True)
-    rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+    rnames = set(robjects_r(f'names(formals({rfuncname}))'))
     # R's `...` is forwarded by a **kwargs catch-all, not a named parameter
     assert ('...' in rnames) == has_var_keyword(cls), rfuncname
     rnames -= {'...'}
@@ -625,7 +626,7 @@ def test_generic_signatures_match_r(
     fit, so the signature defers each to R with ``None``.
     """
     method = f'getS3method("{generic}", "{rclass}", envir = asNamespace("dbarts"))'
-    rnames = set(robjects.r(f'names(formals({method}))')) - bound
+    rnames = set(robjects_r(f'names(formals({method}))')) - bound
     params = mapped_params(meth, skip={'newdata'}, dots=True)
     assert params.keys() <= rnames
     assert rnames - params.keys() == unexposed
@@ -667,7 +668,7 @@ def test_sampler_method_signatures_match_r(method: str, unexposed: set[str]) -> 
     arguments defer their R defaults (``NA``, the control object) with ``None``.
     """
     refmethods = 'dbarts:::dbartsSampler$def@refMethods'
-    rformals = robjects.r(f'names(formals({refmethods}${method}))')
+    rformals = robjects_r(f'names(formals({refmethods}${method}))')
     rnames = set() if rformals is robjects.NULL else set(rformals)
     params = mapped_params(getattr(dbarts.dbarts, method), dots=True)
     assert params.keys() <= rnames, method

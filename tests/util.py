@@ -223,9 +223,10 @@ def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
     Defaults that are NULL, missing, or that cannot be evaluated standalone
     (e.g. because they reference other arguments) are omitted.
     """
-    from rpy2 import robjects  # noqa: PLC0415, deferred to keep R optional
+    # deferred to keep R optional
+    from rbartpackages._src.base import robjects_r  # noqa: PLC0415
 
-    rdefaults = robjects.r(f"""
+    rdefaults = robjects_r(f"""
         Filter(
             Negate(is.null),
             lapply(

@@ -52,6 +52,7 @@ def seed_r(rng: np.random.Generator) -> None:
     R load rpy2 at import time, so they are always covered.
     """
     if 'rpy2.robjects' in modules:
-        from rpy2 import robjects  # noqa: PLC0415, deferred to keep R optional
+        # deferred to keep R optional
+        from rbartpackages._src.base import robjects_r  # noqa: PLC0415
 
-        robjects.r['set.seed'](int_seed(rng))
+        robjects_r['set.seed'](int_seed(rng))

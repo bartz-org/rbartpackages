@@ -30,16 +30,15 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from rpy2 import robjects
 
 from rbartpackages import base
-from rbartpackages._src.base import fork_safe_native_threads
+from rbartpackages._src.base import fork_safe_native_threads, robjects_r
 from tests.util import assert_allclose, assert_array_equal
 
 
 def stats4_loaded() -> bool:
     """Whether the R namespace stats4 is loaded."""
-    return bool(robjects.r('isNamespaceLoaded("stats4")')[0])
+    return bool(robjects_r('isNamespaceLoaded("stats4")')[0])
 
 
 def test_rfunction() -> None:
@@ -60,7 +59,7 @@ def test_rfunction() -> None:
 
     assert stats4_loaded()
 
-    fit = mle(robjects.r('function(m) (m - 3) ^ 2'), start={'m': 0.0})
+    fit = mle(robjects_r('function(m) (m - 3) ^ 2'), start={'m': 0.0})
     assert_allclose(coef(fit).item(), 3.0, rtol=1e-4)
 
 
@@ -94,14 +93,14 @@ def test_r_dataframe_converts_to_polars() -> None:
     registration for data frames takes precedence; bare vectors are untouched.
     """
     pl = pytest.importorskip('polars')
-    rdf = robjects.r('data.frame(a = c(1.0, 2.0, 3.0), b = c(4L, 5L, 6L))')
+    rdf = robjects_r('data.frame(a = c(1.0, 2.0, 3.0), b = c(4L, 5L, 6L))')
     out = base.RObjectBase._r2py(rdf)
     assert isinstance(out, pl.DataFrame)
     assert out.columns == ['a', 'b']
     assert out['a'].to_list() == [1.0, 2.0, 3.0]
     # a bare vector still converts to numpy, not a one-column frame
     assert_array_equal(
-        base.RObjectBase._r2py(robjects.r('c(1.0, 2.0)')), np.array([1.0, 2.0])
+        base.RObjectBase._r2py(robjects_r('c(1.0, 2.0)')), np.array([1.0, 2.0])
     )
 
 

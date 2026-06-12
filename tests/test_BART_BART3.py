@@ -40,10 +40,10 @@ import pandas as pd
 import pytest
 from jaxtyping import Float64
 from numpy import ndarray
-from rpy2 import robjects
 from rpy2.rinterface_lib.embedded import RRuntimeError
 
 from rbartpackages import BART, BART3
+from rbartpackages._src.base import robjects_r
 from tests.util import (
     RegressionData,
     assert_array_equal,
@@ -345,7 +345,7 @@ def test_signature_defaults_match_r(pkg: ModuleType) -> None:
         rfuncname = cls._rfuncname
         # the signatures use _ where R uses . and trail it to dodge python keywords
         params = mapped_params(cls, dots=True)
-        rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+        rnames = set(robjects_r(f'names(formals({rfuncname}))'))
         assert params.keys() <= rnames, rfuncname
         assert rnames - params.keys() == unexposed, rfuncname
 
@@ -386,9 +386,9 @@ def test_predict_signature_matches_r(pkg: ModuleType) -> None:
     rnames = set()
     for type_ in ('wbart', 'pbart', 'lbart'):
         method = f'getS3method("predict", "{type_}", envir = asNamespace("{library}"))'
-        rnames |= set(robjects.r(f'names(formals({method}))'))
+        rnames |= set(robjects_r(f'names(formals({method}))'))
     for worker in ('pwbart', 'mc.pwbart'):
-        rnames |= set(robjects.r(f'names(formals({library}:::{worker}))'))
+        rnames |= set(robjects_r(f'names(formals({library}:::{worker}))'))
     # drop what never crosses the wrapper: the dispatch arguments the wrapper
     # binds itself (object, newdata) and the worker arguments the methods fill
     # with the fit's own data (x.test, treedraws)

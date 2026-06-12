@@ -32,10 +32,10 @@ from inspect import Parameter
 import numpy as np
 import pandas as pd
 import pytest
-from rpy2 import robjects
 from rpy2.rinterface_lib.embedded import RRuntimeError
 
 from rbartpackages import bartMachine
+from rbartpackages._src.base import robjects_r
 from tests.util import (
     assert_allclose,
     assert_array_equal,
@@ -384,7 +384,7 @@ def test_signature_defaults_match_r(
     diverging.
     """
     params = mapped_params(obj)
-    rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+    rnames = set(robjects_r(f'names(formals({rfuncname}))'))
     assert '...' not in rnames, rfuncname
     assert not has_var_keyword(obj), rfuncname
     assert params.keys() <= rnames, rfuncname
@@ -414,7 +414,7 @@ def test_predict_signature_matches_r() -> None:
     unexposed, and the defaults defer to R with ``None``.
     """
     method = 'getS3method("predict", "bartMachine", envir = asNamespace("bartMachine"))'
-    rnames = set(robjects.r(f'names(formals({method}))')) - {'object', 'new_data'}
+    rnames = set(robjects_r(f'names(formals({method}))')) - {'object', 'new_data'}
     params = mapped_params(bartMachine.bartMachine.predict, skip={'new_data'})
     assert params.keys() <= rnames
     assert rnames - params.keys() == {'...'}
