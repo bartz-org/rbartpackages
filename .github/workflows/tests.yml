@@ -1,4 +1,4 @@
-# rbartpackages/workflows/tests.yml
+# rbartpackages/.github/workflows/tests.yml
 #
 # Copyright (c) 2024-2026, The rbartpackages Contributors
 #
@@ -80,25 +80,6 @@ jobs:
         if: steps.refs.outputs.from != ''
         run: uvx --from gitlint-core gitlint --commits=${{ steps.refs.outputs.from }}..HEAD --fail-without-commits --debug
 
-  setup-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      benchmarks-matrix: ${{ steps.set-matrix.outputs.benchmarks-matrix }}
-    steps:
-      - id: set-matrix
-        run: |
-          BENCHMARKS_BASE_MATRIX='[
-            {
-              "id": "latest",
-              "runs-on": "ubuntu-latest",
-              "vars": ""
-            }
-          ]'
-
-          BENCHMARKS_MATRIX=$(echo "$BENCHMARKS_BASE_MATRIX" | jq -c ".")
-
-          echo "benchmarks-matrix={\"include\":$BENCHMARKS_MATRIX}" >> $GITHUB_OUTPUT
-
   tests:
     name: ${{ matrix.target }}/${{ matrix.group }}
     runs-on: ubuntu-latest
@@ -113,6 +94,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # full history with tags, so hatch-vcs can derive the version
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -245,6 +229,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # full history with tags, so hatch-vcs can derive the version
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -313,7 +300,10 @@ jobs:
 
       - name: Write report to job summary
         if: always()
-        run: test -f diffcov.md && cat diffcov.md >> "$GITHUB_STEP_SUMMARY" || true
+        run: |
+          if [ -f diffcov.md ]; then
+            cat diffcov.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   deploy:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
@@ -372,16 +362,22 @@ jobs:
 
   benchmarks:
     name: benchmarks-${{ matrix.id }}
-    needs: setup-matrix
     runs-on: ${{ matrix.runs-on }}
 
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.setup-matrix.outputs.benchmarks-matrix) }}
+      matrix:
+        include:
+          - id: latest
+            runs-on: ubuntu-latest
+            vars: ""
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # full history with tags, so hatch-vcs can derive the version
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -401,6 +397,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # full history with tags, so hatch-vcs can derive the version
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
@@ -413,8 +412,29 @@ jobs:
       - name: run IPython with old toolchain
         run: RPY2_CFFI_MODE=ABI make ipython-old ARGS=config/ipython/profile_default/startup/startup.ipy
 
-      - name: Update package version
-        run: make copy-version
+      - name: Check the version is derived from git
+        run: uv run --dev python -c 'import rbartpackages; print(rbartpackages.__version__)' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(\.dev[0-9]+\+g[0-9a-f]+)?$'
+
+      - name: Install Java (needed by the R package bartMachine via rJava)
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+        with:
+          distribution: temurin
+          # bartMachine 1.4.2 ships jars compiled for Java 21 (class file
+          # version 65); an older JRE fails with UnsupportedClassVersionError.
+          java-version: "21"
+
+      - name: Install R
+        uses: r-lib/actions/setup-r@a51a8012b0aab7c32ef9d19bf54da93f3254335e # v2
+        with:
+          r-version: "renv"
+
+      - name: Make R aware of Java (for rJava)
+        run: sudo R CMD javareconf
+
+      - name: Install R dependencies
+        uses: r-lib/actions/setup-renv@a51a8012b0aab7c32ef9d19bf54da93f3254335e # v2
+        env:
+          GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Update locked dependencies
         run: make update-deps

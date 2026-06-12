@@ -31,5 +31,13 @@ def test_version() -> None:
     """`__version__` and `__version_info__` are consistent."""
     assert isinstance(rbartpackages.__version__, str)
     assert isinstance(rbartpackages.__version_info__, tuple)
-    joined = '.'.join(map(str, rbartpackages.__version_info__))
-    assert joined == rbartpackages.__version__
+    # hatch-vcs derives both from git, so off a release tag the version carries
+    # a `.devN+g<commit>` suffix that does not survive a plain `.`-join. Only the
+    # leading integer release components (before any dev/local part) are required
+    # to match the start of the version string.
+    release = []
+    for part in rbartpackages.__version_info__:
+        if not isinstance(part, int):
+            break
+        release.append(part)
+    assert rbartpackages.__version__.startswith('.'.join(map(str, release)))

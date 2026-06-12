@@ -1,13 +1,25 @@
 # See https://pre-commit.com for more information
 # See https://pre-commit.com/hooks.html for more hooks
 
+# revs are frozen to commit SHAs (tags are mutable); update with
+# 'pre-commit autoupdate --freeze'
+
 exclude: '^\.asv/results/.+\.json$'
 default_stages: [pre-commit]
-default_install_hook_types: [pre-commit, commit-msg, pre-merge-commit]
+default_install_hook_types:
+  [
+    pre-commit,
+    commit-msg,
+    pre-merge-commit,
+    post-commit,
+    post-checkout,
+    post-merge,
+    post-rewrite,
+  ]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # frozen: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-ast
@@ -33,20 +45,22 @@ repos:
         exclude: '^renv/activate\.R$' # because renv edits it automatically, with trailing whitespace
       - id: no-commit-to-branch
   - repo: https://github.com/sbrunner/hooks
-    rev: 1.7.0
+    rev: 582fe216b7f3beb4c1ee949432c0e124909b6dbd # frozen: 1.7.0
     hooks:
       - id: copyright
       - id: copyright-required
         files: \.(py|rst)$
+        # generated headerless file; untracked, so it only reaches hooks via
+        # an explicit `pre-commit run --files`
         exclude: src/rbartpackages/_version\.py$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.16
+    rev: 22f0422809455ec89ffdcf5a00170ba816e42ddb # frozen: v0.15.16
     hooks:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
   - repo: https://github.com/DanielNoord/pydocstringformatter
-    rev: v0.7.5
+    rev: d5190a85272ddf6a3d14bfd88ab327f84aa2a0a7 # frozen: v0.7.5
     hooks:
       - id: pydocstringformatter
         # config in [tool.pydocstringformatter] (pyproject.toml); the hook
@@ -54,21 +68,25 @@ repos:
         # attribute-docstring conventions this enforces; drop `files` to widen.
         files: ^src/rbartpackages/.*\.py$
   - repo: https://github.com/jsh9/pydoclint
-    rev: 0.8.6
+    rev: da69fbd1c05ff6f4ec46bf9be17a27e06601f076 # frozen: 0.8.6
     hooks:
       - id: pydoclint
   - repo: https://github.com/henryiii/validate-pyproject-schema-store
-    rev: 2026.05.28
+    rev: a4ec1952e236bbc3b6ec29909724a33ff9d83327 # frozen: 2026.05.28
     hooks:
       - id: validate-pyproject
   - repo: https://github.com/jorisroovers/gitlint
-    rev: v0.19.1
+    rev: acc9d9de6369b76d22cb4167029d2035e8730b98 # frozen: v0.19.1
     hooks:
       - id: gitlint # this is already defined to run in stage commit-msg
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.11.19
+    rev: c665864e22f27255a10d82e14f8ccea6843fd65e # frozen: 0.11.19
     hooks:
       - id: uv-lock
+  - repo: https://github.com/rhysd/actionlint
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca # frozen: v1.7.12
+    hooks:
+      - id: actionlint
   - repo: local
     hooks:
       - id: lint-merged-tree
@@ -85,12 +103,46 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-merge-commit]
+      - id: refresh-editable-version
+        name: refresh the editable install's git-derived version
+        # WORKAROUND(uv<0.11.20): uv's git cache-keys cannot detect new commits
+        # in linked worktrees (see the cache-keys comment in pyproject.toml), so
+        # the editable rbartpackages's version goes stale; refresh it whenever
+        # HEAD moves. Fixed upstream by uv#19706 (merged after 0.11.19, so first
+        # released in 0.11.20); drop this hook once the CI-pinned uv reaches it.
+        # `--inexact` avoids pruning extras (e.g. jax), `--frozen` avoids
+        # touching uv.lock mid-rebase, and the venv check skips worktrees
+        # without an environment (e.g. right after `worktree add`);
+        # UV_PROJECT_ENVIRONMENT is the only uv setting that moves the venv.
+        entry: sh -c 'test ! -d "${UV_PROJECT_ENVIRONMENT:-.venv}" || uv sync --frozen --inexact --quiet --reinstall-package rbartpackages'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [post-commit, post-checkout, post-merge, post-rewrite]
       - id: check-workarounds
         name: check stale WORKAROUND markers
         entry: uv run --dev python config/check_workarounds.py
         language: system
         pass_filenames: false
         always_run: true
+      - id: check-path-headers
+        name: check the `rbartpackages/<path>` comment matches each file's location
+        entry: uv run --dev python config/check_path_headers.py
+        language: system
+        # self-scopes to files carrying the rbartpackages license header; `text`
+        # just keeps binaries (e.g. .inv) out of the argument list.
+        types: [text]
+      # ty is installed as a dev dependency (run `uv run --dev ty check`) and
+      # configured under [tool.ty] in pyproject.toml, but it is not yet wired in
+      # as a blocking hook: the codebase is not ty-clean (notably rpy2's
+      # dynamically typed objects in the tests). Re-enable once `ty check`
+      # passes, as a whole-project check (per-file would miss cross-file breakage):
+      #   - id: ty
+      #     name: ty check
+      #     entry: uv run --dev ty check
+      #     language: system
+      #     pass_filenames: false
+      #     types_or: [python, toml]
       - id: check-returns-docstring
         name: forbid multi-line non-list `Returns` docstring sections
         # Matches a numpy-style `Returns` block whose first two non-blank lines
