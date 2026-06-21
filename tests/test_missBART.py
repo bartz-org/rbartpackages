@@ -26,6 +26,7 @@
 
 from dataclasses import dataclass
 from inspect import Parameter
+from typing import Any
 
 import numpy as np
 import pytest
@@ -89,7 +90,7 @@ def make_data(rng: np.random.Generator, p: int) -> Data:
 
 
 def fit_missBART2(
-    data: Data, rng: np.random.Generator, **kw: object
+    data: Data, rng: np.random.Generator, **kw: Any
 ) -> missBART.missBART2:
     """Fit `missBART2` on `data` with small, fast MCMC settings."""
     robjects_r['set.seed'](int_seed(rng))

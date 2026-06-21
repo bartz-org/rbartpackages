@@ -28,6 +28,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import Parameter
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -43,6 +44,7 @@ from tests.util import (
     evaluated_r_formals,
     has_var_keyword,
     int_seed,
+    kwdict,
     mapped_params,
 )
 
@@ -86,7 +88,7 @@ def data(rng: np.random.Generator) -> Data:
 
 
 def fit(
-    data: Data, rng: np.random.Generator, *, classification: bool = False, **kw: object
+    data: Data, rng: np.random.Generator, *, classification: bool = False, **kw: Any
 ) -> bartMachine.bartMachine:
     """Fit a small bartMachine model on `data`."""
     bartMachine.set_bart_machine_num_cores(1)
@@ -287,7 +289,7 @@ def test_numpy_response(data: Data, rng: np.random.Generator) -> None:
     The wrapper builds a bare R numeric vector or factor directly, sidestepping
     the ``dim`` that rpy2's numpy bridge attaches (and that bartMachine rejects).
     """
-    common = dict(
+    common: kwdict = dict(
         num_trees=NTREE,
         num_burn_in=NBURN,
         num_iterations_after_burn_in=NPOST,

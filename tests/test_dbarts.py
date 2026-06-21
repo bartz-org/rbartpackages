@@ -46,6 +46,7 @@ from tests.util import (
     assert_close_matrices,
     evaluated_r_formals,
     has_var_keyword,
+    kwdict,
     mapped_params,
     regression_arrays,
 )
@@ -270,7 +271,7 @@ def test_bart_keepcall(data: Data) -> None:
     With ``keepcall=False`` R stores a dummy ``NULL()`` call rather than
     NULL, so the attribute is never exposed as None.
     """
-    kw = dict(
+    kw: kwdict = dict(
         x_train=data.x,
         y_train=data.y,
         ntree=NTREE,
@@ -699,7 +700,7 @@ def test_bart2_forwards_control_kwargs(data: Data) -> None:
     R's ``...`` reaches `dbartsControl`, so a valid control argument (here a
     deterministic `rngSeed`) is accepted, while a bogus one is rejected by R.
     """
-    common = dict(n_trees=NTREE, n_burn=NSKIP, n_samples=NDPOST, verbose=False)
+    common: kwdict = dict(n_trees=NTREE, n_burn=NSKIP, n_samples=NDPOST, verbose=False)
     fit = dbarts.bart2('y ~ x1 + x2 + x3', data=data.frame, rngSeed=1, **common)
     again = dbarts.bart2('y ~ x1 + x2 + x3', data=data.frame, rngSeed=1, **common)
     # the forwarded seed makes the single-threaded fit reproducible
@@ -717,7 +718,7 @@ def test_bart_explicit_signature(data: Data) -> None:
     `binaryOffset` component with the per-observation value used).
     """
     n, _ = data.x.shape
-    common = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST, verbose=False)
+    common: kwdict = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST, verbose=False)
 
     sigest = 2.5
     bart = dbarts.bart(data.x, data.y, sigest=sigest, **common)

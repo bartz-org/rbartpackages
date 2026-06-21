@@ -28,7 +28,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import Parameter, signature
 from operator import ge, le
-from typing import Any
+from typing import Any, TypeAlias
 
 import numpy as np
 from jaxtyping import Float64
@@ -37,6 +37,11 @@ from numpy.linalg import norm
 from numpy.testing import assert_allclose as _np_assert_allclose  # noqa: TID251
 from numpy.testing import assert_array_equal as _np_assert_array_equal  # noqa: TID251
 from numpy.typing import ArrayLike
+
+# Annotation for a keyword-argument dict forwarded via `**`: a bare `dict` leaves
+# the values untyped, so unpacking it into a typed call does not make the checker
+# flag every forwarded argument.
+kwdict: TypeAlias = dict
 
 
 def assert_close_matrices(

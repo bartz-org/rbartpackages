@@ -49,6 +49,7 @@ from tests.util import (
     assert_array_equal,
     assert_close_matrices,
     evaluated_r_formals,
+    kwdict,
     mapped_params,
     regression_arrays,
 )
@@ -173,7 +174,8 @@ def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
     m, _ = data.x_test.shape
     x_train = data.x_const if const else data.x
     x_test = data.x_test_const if const else data.x_test
-    kw = dict() if pkg is BART3 else dict(hostname=True)  # BART3 dropped hostname
+    # BART3 dropped hostname
+    kw: kwdict = dict() if pkg is BART3 else dict(hostname=True)
     bart = pkg.gbart(
         x_train=x_train,
         y_train=data.biny if binary else data.y,
@@ -241,7 +243,7 @@ def test_explicit_signature(pkg: ModuleType, data: Data) -> None:
     extra of the other) are rejected instead of being forwarded to R.
     """
     offset = 1.5
-    common = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST)
+    common: kwdict = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST)
     bart = pkg.gbart(data.x, data.y, data.x_test, offset=offset, **common)
     assert bart.offset == offset
 
