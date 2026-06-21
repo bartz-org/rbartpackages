@@ -369,14 +369,18 @@ class missBART2(RObjectBase):
         if isinstance(self.pdp_out, np.ndarray):
             self.pdp_out = None
 
-        self.y_post = np.stack(_values(self.y_post))
-        self.z_post = np.stack(_values(self.z_post))
-        self.omega_post = np.stack(_values(self.omega_post))
-        self.y_impute = np.stack(_values(self.y_impute))
-        self.var_imp = _values(self.var_imp)
-        self.y_pred = _values(self.y_pred)
+        self.y_post = np.stack(_values(cast(NamedList, self.y_post)))
+        self.z_post = np.stack(_values(cast(NamedList, self.z_post)))
+        self.omega_post = np.stack(_values(cast(NamedList, self.omega_post)))
+        self.y_impute = np.stack(_values(cast(NamedList, self.y_impute)))
+        self.var_imp = _values(cast(NamedList, self.var_imp))
+        self.y_pred = _values(cast(NamedList, self.y_pred))
 
-        self.reg_trees = [_values(it) for it in _values(self.reg_trees)]
-        self.class_trees = [_values(it) for it in _values(self.class_trees)]
-        self.reg_mu = [_values(it) for it in _values(self.reg_mu)]
-        self.class_mu = [_values(it) for it in _values(self.class_mu)]
+        self.reg_trees = [
+            _values(it) for it in _values(cast(NamedList, self.reg_trees))
+        ]
+        self.class_trees = [
+            _values(it) for it in _values(cast(NamedList, self.class_trees))
+        ]
+        self.reg_mu = [_values(it) for it in _values(cast(NamedList, self.reg_mu))]
+        self.class_mu = [_values(it) for it in _values(cast(NamedList, self.class_mu))]
