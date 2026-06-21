@@ -24,7 +24,7 @@
 
 """Implementation of `rbartpackages.dbarts`."""
 
-from typing import Literal
+from typing import Literal, cast
 
 from jaxtyping import Float64, Int32, Integer
 from numpy import ndarray
@@ -996,9 +996,9 @@ class bart(RObjectBase):
             if value is robjects.NULL:
                 setattr(self, name, None)
         if self.n_chains is not None:
-            self.n_chains = self.n_chains.item()
+            self.n_chains = cast(ndarray, self.n_chains).item()
         if self.sigest is not None:
-            self.sigest = self.sigest.item()
+            self.sigest = cast(ndarray, self.sigest).item()
         if self.fit is not None:
             self.fit = self._wrap_fit(self.fit)
 

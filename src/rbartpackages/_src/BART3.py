@@ -25,7 +25,7 @@
 """Implementation of `rbartpackages.BART3`."""
 
 from functools import partial
-from typing import Any, Literal, NamedTuple, TypedDict
+from typing import Any, Literal, NamedTuple, TypedDict, cast
 
 import numpy as np
 from jaxtyping import Float64, Int32, Integer, Real
@@ -476,11 +476,11 @@ class mc_gbart(RObjectBase):
             super().__init__(**drop_none(kw))
 
         # fix up attributes
-        self.chains = self.chains.item()
-        self.ndpost = self.ndpost.astype(int).item()
-        self.offset = self.offset.item()
+        self.chains = cast(ndarray, self.chains).item()
+        self.ndpost = cast(ndarray, self.ndpost).astype(int).item()
+        self.offset = cast(ndarray, self.offset).item()
         self.proc_time = ProcTime(*map(float, self.proc_time))
-        self.rho = self.rho.item()
+        self.rho = cast(ndarray, self.rho).item()
 
         # varcount has the kept columns, so pass their count to reconstruct the
         # original column set from the negative (dropped) indices
@@ -489,16 +489,16 @@ class mc_gbart(RObjectBase):
         )
 
         if self.LPML is not None:
-            self.LPML = self.LPML.item()
+            self.LPML = cast(ndarray, self.LPML).item()
         if self.sigest is not None:
-            if self.sigest.dtype == bool:
+            if cast(ndarray, self.sigest).dtype == bool:
                 # BART3 bug: mc.gbart with mc_cores > 1 overwrites sigest with
                 # its logical-NA default instead of the estimate.
                 self.sigest = float('nan')
             else:
-                self.sigest = self.sigest.item()
+                self.sigest = cast(ndarray, self.sigest).item()
         if self.sigma_mean is not None:
-            self.sigma_mean = self.sigma_mean.item()
+            self.sigma_mean = cast(ndarray, self.sigma_mean).item()
 
         self.treedraws = convert_treedraws(self.treedraws)
 

@@ -24,7 +24,7 @@
 
 """Implementation of `rbartpackages.missBART`."""
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from jaxtyping import Bool, Float64, Shaped
@@ -354,10 +354,10 @@ class missBART2(RObjectBase):
         }
         super().__init__(**drop_none(kw))
 
-        self.MH_sd = self.MH_sd.item()
-        self.burn = int(self.burn.item())
-        self.iters = int(self.iters.item())
-        self.thin = int(self.thin.item())
+        self.MH_sd = cast(ndarray, self.MH_sd).item()
+        self.burn = int(cast(ndarray, self.burn).item())
+        self.iters = int(cast(ndarray, self.iters).item())
+        self.thin = int(cast(ndarray, self.thin).item())
 
         # NA-when-disabled fields come back as plain (NA-filled) ndarrays
         # instead of NamedLists; normalize to None.
