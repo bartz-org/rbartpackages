@@ -27,10 +27,11 @@
 import ctypes
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from functools import partial, wraps
+from functools import wraps
 from inspect import cleandoc
 from re import fullmatch, match
 from textwrap import indent
+from types import FunctionType
 from typing import Any, Protocol, TypeAlias
 
 import numpy as np
@@ -261,7 +262,7 @@ class RObjectBase:
 
     @classmethod
     def _py2r(cls, x: object) -> object:
-        if isinstance(x, __class__):
+        if isinstance(x, RObjectBase):
             return x._robject  # noqa: SLF001, same-class access
         with cls._convctx:
             return cls._converter.py2rpy(x)
@@ -393,7 +394,7 @@ class RObjectBase:
         cls.__doc__ = '\n\n'.join(parts)
 
 
-def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
+def rmethod(meth: FunctionType, *, rname: str | None = None) -> Callable:
     """
     Automatically implement a method using the correspoding R method.
 
@@ -430,11 +431,11 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
 
 
 def rproperty(
-    meth: Callable | None = None,
+    meth: FunctionType,
     *,
     rname: str | None = None,
     wrap: type[RObjectBase] | None = None,
-) -> property | Callable[[Callable], property]:
+) -> property:
     """
     Automatically implement a read-only property using the corresponding R field.
 
@@ -446,8 +447,7 @@ def rproperty(
     ----------
     meth
         A method in a subclass of `RObjectBase`. The original implementation
-        is completely discarded. If not given, return a decorator instead, to
-        allow using the keyword arguments.
+        is completely discarded.
     rname
         The name of the field in R. If not specified, use the name of `meth`.
     wrap
@@ -462,12 +462,10 @@ def rproperty(
     --------
     >>> class MyRObject(RObjectBase):
     ...     _rfuncname = 'mypackage::myfunction'
-    ...     @rproperty(rname='my.field')
+    ...     @partial(rproperty, rname='my.field')
     ...     def my_field(self):
     ...         ...
     """
-    if meth is None:
-        return partial(rproperty, rname=rname, wrap=wrap)
     if rname is None:
         rname = meth.__name__
 
@@ -484,7 +482,9 @@ def rproperty(
     return property(impl)
 
 
-def rfunction(func: Callable, *, library: str, rname: str | None = None) -> Callable:
+def rfunction(
+    func: FunctionType, *, library: str, rname: str | None = None
+) -> Callable:
     """
     Automatically implement a function using the corresponding R function.
 

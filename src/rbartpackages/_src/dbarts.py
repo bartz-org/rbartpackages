@@ -24,7 +24,8 @@
 
 """Implementation of `rbartpackages.dbarts`."""
 
-from typing import Literal, cast
+from functools import partial
+from typing import Literal, cast, no_type_check
 
 from jaxtyping import Float64, Int32, Integer
 from numpy import ndarray
@@ -367,17 +368,20 @@ class dbarts(RObjectBase):
         }
         super().__init__(**drop_none(kw))
 
-    @rproperty(wrap=dbartsControl)
+    @partial(rproperty, wrap=dbartsControl)
+    @no_type_check
     def control(self) -> dbartsControl:
-        """The control object of the sampler, as a `dbartsControl` wrapper."""
+        """Return the control object of the sampler, as a `dbartsControl` wrapper."""
         ...
 
-    @rproperty(wrap=dbartsData)
+    @partial(rproperty, wrap=dbartsData)
+    @no_type_check
     def data(self) -> dbartsData:
-        """The data object of the sampler, as a `dbartsData` wrapper."""
+        """Return the data object of the sampler, as a `dbartsData` wrapper."""
         ...
 
     @rproperty
+    @no_type_check
     def model(self) -> RS4:
         """The model (priors) object of the sampler (an R ``dbartsModel``)."""
         ...

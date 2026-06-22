@@ -25,7 +25,7 @@
 """Implementation of `rbartpackages.bartMachine`."""
 
 from functools import partial
-from typing import Literal, TypedDict, cast
+from typing import Literal, TypedDict, cast, no_type_check
 
 from jaxtyping import Float64, Integer
 from numpy import ndarray
@@ -595,6 +595,7 @@ def bart_machine_num_cores() -> int:
 
 
 @partial(rfunction, library='bartMachine')
+@no_type_check
 def get_sigsqs(
     bart_machine: bartMachine,
     after_burn_in: bool = True,
