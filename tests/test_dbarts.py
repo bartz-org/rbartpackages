@@ -48,6 +48,7 @@ from tests.util import (
     has_var_keyword,
     kwdict,
     mapped_params,
+    nnone,
     regression_arrays,
 )
 
@@ -153,8 +154,8 @@ def test_bart(data: Data, binary: bool, keeptrees: bool) -> None:
         verbose=False,
     )
 
-    assert bart.yhat_train.shape == (NDPOST, n)
-    assert bart.yhat_test.shape == (NDPOST, m)
+    assert nnone(bart.yhat_train).shape == (NDPOST, n)
+    assert nnone(bart.yhat_test).shape == (NDPOST, m)
     assert bart.varcount.shape == (NDPOST, p)
     assert bart.varcount.dtype == np.int32
     assert bart.k is None  # k is fixed by default, so it has no draws
@@ -176,16 +177,16 @@ def test_bart(data: Data, binary: bool, keeptrees: bool) -> None:
         assert bart.yhat_test_mean is None
     else:
         assert_array_equal(bart.y, data.y)
-        assert bart.sigma.shape == (NDPOST,)  # burn-in draws are in first_sigma
-        assert bart.first_sigma.shape == (NSKIP,)
+        assert nnone(bart.sigma).shape == (NDPOST,)  # burn-in draws are in first_sigma
+        assert nnone(bart.first_sigma).shape == (NSKIP,)
         assert isinstance(bart.sigest, float)
         assert math.isfinite(bart.sigest)
         assert bart.binaryOffset is None
         assert_close_matrices(
-            bart.yhat_train_mean, bart.yhat_train.mean(axis=0), rtol=1e-7
+            bart.yhat_train_mean, nnone(bart.yhat_train).mean(axis=0), rtol=1e-7
         )
         assert_close_matrices(
-            bart.yhat_test_mean, bart.yhat_test.mean(axis=0), rtol=1e-7
+            bart.yhat_test_mean, nnone(bart.yhat_test).mean(axis=0), rtol=1e-7
         )
 
     if keeptrees:
@@ -209,8 +210,8 @@ def test_bart_no_test_data(data: Data) -> None:
         keepevery=keepevery,
         verbose=False,
     )
-    assert bart.yhat_train.shape == (kept, n)
-    assert bart.sigma.shape == (kept,)
+    assert nnone(bart.yhat_train).shape == (kept, n)
+    assert nnone(bart.sigma).shape == (kept,)
     assert bart.yhat_test is None
     assert bart.yhat_test_mean is None
 
@@ -237,12 +238,12 @@ def test_bart_chains(data: Data, combine: bool) -> None:
     )
     draws = (nchain * NDPOST,) if combine else (nchain, NDPOST)
     burnin = (nchain * NSKIP,) if combine else (nchain, NSKIP)
-    assert bart.yhat_train.shape == (*draws, n)
-    assert bart.sigma.shape == draws
-    assert bart.first_sigma.shape == burnin
+    assert nnone(bart.yhat_train).shape == (*draws, n)
+    assert nnone(bart.sigma).shape == draws
+    assert nnone(bart.first_sigma).shape == burnin
     assert bart.varcount.shape == (*draws, p)
     assert bart.n_chains == nchain
-    assert bart.yhat_train_mean.shape == (n,)
+    assert nnone(bart.yhat_train_mean).shape == (n,)
 
 
 def test_bart_splitprobs(data: Data) -> None:
@@ -306,18 +307,18 @@ def test_bart2(data: Data) -> None:
         n_threads=1,
         verbose=False,
     )
-    assert bart.yhat_train.shape == (n_chains, NDPOST, n)
-    assert bart.yhat_test.shape == (n_chains, NDPOST, m)
+    assert nnone(bart.yhat_train).shape == (n_chains, NDPOST, n)
+    assert nnone(bart.yhat_test).shape == (n_chains, NDPOST, m)
     assert bart.varcount.shape == (n_chains, NDPOST, p)
     assert np.all(bart.varcount[..., 0] > 0)
     assert_array_equal(
         bart.varcount[..., 1:], np.zeros((n_chains, NDPOST, p - 1), np.int32)
     )
-    assert bart.sigma.shape == (n_chains, NDPOST)
-    assert bart.first_sigma.shape == (n_chains, NSKIP)
+    assert nnone(bart.sigma).shape == (n_chains, NDPOST)
+    assert nnone(bart.first_sigma).shape == (n_chains, NSKIP)
     assert bart.n_chains == n_chains
-    assert bart.yhat_train_mean.shape == (n,)
-    assert bart.yhat_test_mean.shape == (m,)
+    assert nnone(bart.yhat_train_mean).shape == (n,)
+    assert nnone(bart.yhat_test_mean).shape == (m,)
     assert_array_equal(bart.y, data.y)
 
 
@@ -343,12 +344,12 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
         n_thin=1,
         verbose=False,
     )
-    assert fit.yhat_train.shape == (NDPOST, n)
+    assert nnone(fit.yhat_train).shape == (NDPOST, n)
     assert fit.ranef.shape == (NDPOST, n_groups)
     assert fit.ranef_mean.shape == (n_groups,)
     assert fit.tau.shape == (NDPOST,)
     assert fit.first_tau.shape == (NSKIP,)
-    assert fit.sigma.shape == (NDPOST,)
+    assert nnone(fit.sigma).shape == (NDPOST,)
     assert isinstance(fit.sigest, float)
     # keepTrees defaults to True for rbart_vi; one wrapped sampler per chain
     (sampler,) = fit.fit
@@ -383,7 +384,7 @@ def test_dbarts(data: Data) -> None:
         proposal_probs={'birth_death': 0.5, 'change': 0.1, 'swap': 0.4, 'birth': 0.5},
     )
 
-    out = sampler.run(NSKIP, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
     assert sorted(out) == ['sigma', 'test', 'train', 'varcount']
     assert out['train'].shape == (n, NDPOST)
     assert out['sigma'].shape == (NDPOST,)
@@ -401,7 +402,7 @@ def test_dbarts(data: Data) -> None:
     copy = sampler.copy()
     assert isinstance(copy, dbarts.dbarts)
     assert copy is not sampler
-    out2 = copy.run(NSKIP, NDPOST)
+    out2 = nnone(copy.run(NSKIP, NDPOST))
     assert out2['train'].shape == (n, NDPOST)
 
     # the sampler state can be drawn from the prior in place
@@ -419,7 +420,7 @@ def test_dbarts(data: Data) -> None:
     sampler.setResponse(-data.y)
     y = robjects_r('function(d) d@y')(sampler.data._robject)
     assert_array_equal(np.asarray(y), -data.y)
-    out3 = sampler.run(NSKIP, NDPOST)
+    out3 = nnone(sampler.run(NSKIP, NDPOST))
     assert_close_matrices(out3['train'].mean(axis=1), -data.y, rtol=0.5)
 
 
@@ -432,8 +433,8 @@ def test_dbarts_test_data(data: Data) -> None:
     m, _ = data.x_test.shape
     control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
     sampler = dbarts.dbarts(data.x, data.y, test=data.x_test, control=control)
-    out = sampler.run(NSKIP, NDPOST)
-    assert out['test'].shape == (m, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
+    assert nnone(out['test']).shape == (m, NDPOST)
 
     (item,) = sampler.state.items()  # one state per chain
     assert item.value.rclass[0] == 'dbartsState'
@@ -448,7 +449,7 @@ def test_dbarts_binary(data: Data) -> None:
     n, _ = data.x.shape
     control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
     sampler = dbarts.dbarts(data.x, data.biny, control=control)
-    out = sampler.run(NSKIP, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
     assert sorted(out) == ['k', 'sigma', 'test', 'train', 'varcount']
     assert out['train'].shape == (n, NDPOST)
     assert_array_equal(out['sigma'], np.ones(NDPOST))
@@ -473,24 +474,24 @@ def test_dbarts_setters(data: Data) -> None:
 
     # unforced updates report success (the trees are stumps, so no leaf can
     # end up empty); whole-matrix updates are forced by default
-    assert sampler.setPredictor(2 * data.x, forceUpdate=False).item()
-    assert sampler.setPredictor(data.x[:, 0], 1).item()  # column 1, 1-based
+    assert nnone(sampler.setPredictor(2 * data.x, forceUpdate=False)).item()
+    assert nnone(sampler.setPredictor(data.x[:, 0], 1)).item()  # column 1, 1-based
     sampler.setSigma(1.0)
 
     # replacing the test predictors changes the test draws
     sampler.setTestPredictor(data.x[:10])
-    out = sampler.run(NSKIP, NDPOST)
-    assert out['test'].shape == (10, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
+    assert nnone(out['test']).shape == (10, NDPOST)
 
     # the test offset enters the test draws only
     sampler.setTestPredictorAndOffset(data.x_test, 1e6)
-    out = sampler.run(0, NDPOST)
-    assert out['test'].shape == (m, NDPOST)
-    assert np.all(out['test'] > 1e5)
+    out = nnone(sampler.run(0, NDPOST))
+    assert nnone(out['test']).shape == (m, NDPOST)
+    assert np.all(nnone(out['test']) > 1e5)
     assert np.all(np.abs(out['train']) < 1e5)
     sampler.setTestOffset(0.0)
-    out = sampler.run(0, NDPOST)
-    assert np.all(np.abs(out['test']) < 1e5)
+    out = nnone(sampler.run(0, NDPOST))
+    assert np.all(np.abs(nnone(out['test'])) < 1e5)
 
     # the train offset lands in the data object; its effect on the draws is
     # not asserted because a large post-hoc offset makes the sampler bimodal
@@ -510,14 +511,14 @@ def test_dbarts_setters(data: Data) -> None:
 
     # a dbartsData replaces the training data (and drops the test data)
     sampler.setData(dbarts.dbartsData('y ~ x1 + x2 + x3', data.frame.iloc[: n // 2]))
-    out = sampler.run(NSKIP, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
     assert out['train'].shape == (n // 2, NDPOST)
     assert out['test'] is None
 
     # the wrapped data property feeds back into setData: grafting another
     # sampler's data restores the full training set
     sampler.setData(other.data)
-    out = sampler.run(NSKIP, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
     assert out['train'].shape == (n, NDPOST)
 
     # a keepTrees control makes predict return the kept draws

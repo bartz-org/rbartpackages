@@ -41,6 +41,7 @@ from tests.util import (
     has_var_keyword,
     int_seed,
     mapped_params,
+    nnone,
 )
 
 N_TREES = 2
@@ -144,7 +145,7 @@ def test_fit(rng: np.random.Generator, p: int) -> None:
     assert (fit.omega_post > 0).all()
     assert fit.y_impute.shape == (ITERS, data.n_missing)
     assert np.isfinite(fit.y_impute).all()
-    assert fit.new_y_post.shape == (ITERS, m, p)
+    assert nnone(fit.new_y_post).shape == (ITERS, m, p)
     assert fit.y_miss_accept.shape == (TOTAL_ITERS, data.n_missing)
     assert fit.y_miss_accept.dtype == bool
 

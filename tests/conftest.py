@@ -30,7 +30,7 @@ from sys import modules
 import numpy as np
 import pytest
 
-from tests.util import int_seed
+from tests.util import int_seed, nnone
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def rng(request: pytest.FixtureRequest) -> np.random.Generator:
     nodeid = request.node.nodeid
     # exclude xdist_group suffixes because they are active only under xdist
     match = fullmatch(r'(.+?\.py::.+?(\[.+?\])?)(@.+)?', nodeid)
-    nodeid = match.group(1)
+    nodeid = nnone(match).group(1)
     seed = np.array([nodeid], np.bytes_).view(np.uint8)
     return np.random.default_rng(seed)
 

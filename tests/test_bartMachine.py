@@ -46,6 +46,7 @@ from tests.util import (
     int_seed,
     kwdict,
     mapped_params,
+    nnone,
 )
 
 NTREE = 10
@@ -167,7 +168,7 @@ def test_regression(data: Data, rng: np.random.Generator) -> None:
     assert_close_matrices(bm.y, data.y.to_numpy())
 
     # in-sample outputs
-    assert bm.y_hat_train.shape == (n,)
+    assert nnone(bm.y_hat_train).shape == (n,)
     assert_close_matrices(bm.residuals, data.y.to_numpy() - bm.y_hat_train, rtol=1e-7)
     assert_allclose(bm.L1_err_train, np.abs(bm.residuals).sum(), rtol=1e-7)
     assert_allclose(bm.L2_err_train, np.square(bm.residuals).sum(), rtol=1e-7)
@@ -218,17 +219,19 @@ def test_classification(data: Data, rng: np.random.Generator) -> None:
     # the response is encoded as 1 for the first (target) level
     assert_close_matrices(
         bm.model_matrix_training_data[:, p],
-        (labels == bm.y_levels[0]).to_numpy().astype(float),
+        (labels == nnone(bm.y_levels)[0]).to_numpy().astype(float),
     )
 
     # in-sample outputs
-    assert bm.p_hat_train.shape == (n,)
-    assert np.all((bm.p_hat_train >= 0) & (bm.p_hat_train <= 1))
+    p_hat_train = nnone(bm.p_hat_train)
+    y_levels = nnone(bm.y_levels)
+    assert p_hat_train.shape == (n,)
+    assert np.all((p_hat_train >= 0) & (p_hat_train <= 1))
     expected_labels = np.where(
-        bm.p_hat_train > bm.prob_rule_class, bm.y_levels[0], bm.y_levels[1]
+        p_hat_train > bm.prob_rule_class, y_levels[0], y_levels[1]
     )
     assert_array_equal(bm.y_hat_train, expected_labels, strict=False)
-    assert bm.confusion_matrix.shape == (3, 3)
+    assert nnone(bm.confusion_matrix).shape == (3, 3)
     assert isinstance(bm.misclassification_error, float)
 
     # regression-only outputs are unset

@@ -28,7 +28,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import Parameter, signature
 from operator import ge, le
-from typing import Any, TypeAlias
+from typing import Any, TypeAlias, TypeVar
 
 import numpy as np
 from jaxtyping import Float64
@@ -42,6 +42,14 @@ from numpy.typing import ArrayLike
 # the values untyped, so unpacking it into a typed call does not make the checker
 # flag every forwarded argument.
 kwdict: TypeAlias = dict
+
+_T = TypeVar('_T')
+
+
+def nnone(x: _T | None) -> _T:
+    """Assert `x` is not ``None`` and return it, narrowing away the ``None``."""
+    assert x is not None
+    return x
 
 
 def assert_close_matrices(
