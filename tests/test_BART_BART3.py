@@ -51,6 +51,7 @@ from tests.util import (
     evaluated_r_formals,
     kwdict,
     mapped_params,
+    nnone,
     regression_arrays,
 )
 
@@ -152,11 +153,13 @@ def check_predict(
         assert pred['prob_test'].shape == (NDPOST, m)
         assert pred['prob_test_mean'].shape == (m,)
         assert isinstance(pred['binaryOffset'], float)
-        assert_close_matrices(pred['prob_test_mean'], bart.prob_test_mean, rtol=1e-5)
+        assert_close_matrices(
+            pred['prob_test_mean'], nnone(bart.prob_test_mean), rtol=1e-5
+        )
     else:
         assert isinstance(pred, np.ndarray)
         assert pred.shape == (NDPOST, m)
-        assert_close_matrices(pred.mean(axis=0), bart.yhat_test_mean, rtol=1e-5)
+        assert_close_matrices(pred.mean(axis=0), nnone(bart.yhat_test_mean), rtol=1e-5)
 
 
 @pytest.mark.parametrize('const', [False, True], ids=['no-const', 'const'])

@@ -110,7 +110,7 @@ def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
     assert pred.shape == (NDPOST, m)
     # the kept trees evaluated at x_test reproduce the fit's test draws
     latent = bart.predict(data.x_test, type='bart')
-    assert_close_matrices(latent, bart.yhat_test, rtol=1e-7)
+    assert_close_matrices(latent, nnone(bart.yhat_test), rtol=1e-7)
     if binary:
         assert np.all((pred > 0) & (pred < 1))
         assert_close_matrices(pred, phi(latent), rtol=1e-7)
@@ -120,7 +120,7 @@ def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
     draws = bart.extract()  # training draws, expected-value scale
     assert isinstance(draws, np.ndarray)
     if binary:
-        assert_close_matrices(draws, phi(bart.yhat_train), rtol=1e-7)
+        assert_close_matrices(draws, phi(nnone(bart.yhat_train)), rtol=1e-7)
     else:
         assert_array_equal(draws, nnone(bart.yhat_train))
     assert_close_matrices(bart.fitted(), draws.mean(axis=0), rtol=1e-7)
@@ -170,7 +170,7 @@ def test_bart(data: Data, binary: bool, keeptrees: bool) -> None:
         assert bart.fit is None
         assert bart.n_chains == 1
     if binary:
-        assert_array_equal(bart.binaryOffset, np.zeros(n))
+        assert_array_equal(nnone(bart.binaryOffset), np.zeros(n))
         assert bart.sigma is None
         assert bart.first_sigma is None
         assert bart.sigest is None
@@ -178,17 +178,17 @@ def test_bart(data: Data, binary: bool, keeptrees: bool) -> None:
         assert bart.yhat_train_mean is None
         assert bart.yhat_test_mean is None
     else:
-        assert_array_equal(bart.y, data.y)
+        assert_array_equal(nnone(bart.y), data.y)
         assert nnone(bart.sigma).shape == (NDPOST,)  # burn-in draws are in first_sigma
         assert nnone(bart.first_sigma).shape == (NSKIP,)
         assert isinstance(bart.sigest, float)
         assert math.isfinite(bart.sigest)
         assert bart.binaryOffset is None
         assert_close_matrices(
-            bart.yhat_train_mean, nnone(bart.yhat_train).mean(axis=0), rtol=1e-7
+            nnone(bart.yhat_train_mean), nnone(bart.yhat_train).mean(axis=0), rtol=1e-7
         )
         assert_close_matrices(
-            bart.yhat_test_mean, nnone(bart.yhat_test).mean(axis=0), rtol=1e-7
+            nnone(bart.yhat_test_mean), nnone(bart.yhat_test).mean(axis=0), rtol=1e-7
         )
 
     if keeptrees:
@@ -321,7 +321,7 @@ def test_bart2(data: Data) -> None:
     assert bart.n_chains == n_chains
     assert nnone(bart.yhat_train_mean).shape == (n,)
     assert nnone(bart.yhat_test_mean).shape == (m,)
-    assert_array_equal(bart.y, data.y)
+    assert_array_equal(nnone(bart.y), data.y)
 
 
 def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
@@ -707,7 +707,7 @@ def test_bart2_forwards_control_kwargs(data: Data) -> None:
     fit = dbarts.bart2('y ~ x1 + x2 + x3', data=data.frame, rngSeed=1, **common)
     again = dbarts.bart2('y ~ x1 + x2 + x3', data=data.frame, rngSeed=1, **common)
     # the forwarded seed makes the single-threaded fit reproducible
-    assert_array_equal(fit.yhat_train, again.yhat_train)
+    assert_array_equal(nnone(fit.yhat_train), nnone(again.yhat_train))
 
     with pytest.raises(RRuntimeError, match='unknown arguments'):
         dbarts.bart2('y ~ x1', data=data.frame, totallybogus=1, **common)
@@ -729,4 +729,4 @@ def test_bart_explicit_signature(data: Data) -> None:
 
     offset = 0.3
     binary = dbarts.bart(data.x, data.biny, binaryOffset=offset, **common)
-    assert_array_equal(binary.binaryOffset, np.full(n, offset))
+    assert_array_equal(nnone(binary.binaryOffset), np.full(n, offset))

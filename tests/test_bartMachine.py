@@ -168,7 +168,12 @@ def test_regression(data: Data, rng: np.random.Generator) -> None:
     assert_close_matrices(bm.y, data.y.to_numpy())
 
     # in-sample outputs
-    assert nnone(bm.y_hat_train).shape == (n,)
+    assert bm.y_hat_train is not None
+    assert bm.residuals is not None
+    assert bm.L1_err_train is not None
+    assert bm.L2_err_train is not None
+    assert bm.rmse_train is not None
+    assert bm.y_hat_train.shape == (n,)
     assert_close_matrices(bm.residuals, data.y.to_numpy() - bm.y_hat_train, rtol=1e-7)
     assert_allclose(bm.L1_err_train, np.abs(bm.residuals).sum(), rtol=1e-7)
     assert_allclose(bm.L2_err_train, np.square(bm.residuals).sum(), rtol=1e-7)
@@ -214,7 +219,7 @@ def test_classification(data: Data, rng: np.random.Generator) -> None:
 
     check_common_attributes(bm, data)
     assert bm.pred_type == 'classification'
-    assert list(bm.y_levels) == ['a', 'b']  # alphabetical; the first is the target
+    assert list(nnone(bm.y_levels)) == ['a', 'b']  # alphabetical; first is target
     assert list(bm.y) == list(labels)
     # the response is encoded as 1 for the first (target) level
     assert_close_matrices(
@@ -230,7 +235,7 @@ def test_classification(data: Data, rng: np.random.Generator) -> None:
     expected_labels = np.where(
         p_hat_train > bm.prob_rule_class, y_levels[0], y_levels[1]
     )
-    assert_array_equal(bm.y_hat_train, expected_labels, strict=False)
+    assert_array_equal(nnone(bm.y_hat_train), expected_labels, strict=False)
     assert nnone(bm.confusion_matrix).shape == (3, 3)
     assert isinstance(bm.misclassification_error, float)
 
@@ -249,10 +254,10 @@ def test_classification(data: Data, rng: np.random.Generator) -> None:
     # predict returns probabilities by default, labels with type='class'
     p_hat = bm.predict(data.x, verbose=False)
     assert p_hat.shape == (n,)
-    assert_close_matrices(p_hat, bm.p_hat_train, rtol=1e-7)
+    assert_close_matrices(p_hat, p_hat_train, rtol=1e-7)
     label_pred = bm.predict(data.x_test, type='class', verbose=False)
     assert label_pred.shape == (m,)
-    assert set(label_pred) <= set(bm.y_levels)
+    assert set(label_pred) <= set(y_levels)
 
     # bart_machine_get_posterior draws are probabilities
     post = bartMachine.bart_machine_get_posterior(bm, data.x_test, verbose=False)
@@ -309,7 +314,7 @@ def test_numpy_response(data: Data, rng: np.random.Generator) -> None:
     labels = data.labels.to_numpy().astype(str)
     clf = bartMachine.bartMachine(X=data.x, y=labels, **common)
     assert clf.pred_type == 'classification'
-    assert list(clf.y_levels) == ['a', 'b']
+    assert list(nnone(clf.y_levels)) == ['a', 'b']
 
 
 def test_xy_interface(data: Data, rng: np.random.Generator) -> None:
@@ -346,7 +351,7 @@ def test_optional_inputs(data: Data, rng: np.random.Generator) -> None:
         # not lists, to the R list bartMachine wants
         interaction_constraints={'a': np.array([1, 2]), 'b': np.array([3])},
     )
-    assert_array_equal(bm.cov_prior_vec, cov_prior_vec)
+    assert_array_equal(nnone(bm.cov_prior_vec), cov_prior_vec)
     # the constraints come back as a tuple of 0-based column indices
     assert isinstance(bm.interaction_constraints, tuple)
     first, second = bm.interaction_constraints
