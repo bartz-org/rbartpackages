@@ -32,10 +32,10 @@ separate in each wrapper module (sharing them would either force importing one
 package's R namespace to use the other, or have sphinx document them twice).
 """
 
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import numpy as np
-from jaxtyping import Int32
+from jaxtyping import Float64, Int32
 from numpy import ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
@@ -132,6 +132,20 @@ def convert_gbart_predict(out: object) -> ndarray | dict[str, Any]:
         return result
 
 
+class _ModelMatrix(Protocol):
+    """Structural view of the dynamic ``bartModelMatrix`` data attributes.
+
+    Both ``BART`` and ``BART3`` define a ``bartModelMatrix`` subclass that
+    declares these attributes; `populate_model_matrix` is their shared body, so
+    it types `self` as the generic `RObjectBase` and casts to this Protocol to
+    read and write the data attributes.
+    """
+
+    X: Float64[ndarray, 'N p']
+    grp: Int32[ndarray, ' p'] | Float64[ndarray, ' 1'] | None
+    rm_const: Int32[ndarray, '<=p']
+
+
 def populate_model_matrix(
     self: RObjectBase, kw: dict[str, Any], *, removed: bool
 ) -> ndarray | RObjectBase:
@@ -160,10 +174,11 @@ def populate_model_matrix(
     if not self._has_named_components(self._robject):
         return self._r2py(self._robject)
     self._set_attrs_from_robject()
+    mm = cast(_ModelMatrix, self)
 
     # grp is R NULL when absent (see the subclasses); expose it as None
-    if self.grp is robjects.NULL:
-        self.grp = None
+    if mm.grp is robjects.NULL:
+        mm.grp = None
 
-    self.rm_const = parse_rm_const(self.rm_const, self.X.shape[1], removed=removed)
+    mm.rm_const = parse_rm_const(mm.rm_const, mm.X.shape[1], removed=removed)
     return self
