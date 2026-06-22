@@ -30,6 +30,7 @@ from typing import Any, Literal, NamedTuple, TypedDict, cast
 from jaxtyping import Bool, Float64, Int32, Integer
 from numpy import ndarray
 from rpy2 import robjects
+from rpy2.rlike.container import NamedList
 
 from rbartpackages._src.bartcommon import (
     convert_gbart_predict,
@@ -412,7 +413,9 @@ class mc_gbart(RObjectBase):
         if self.sigma_mean is not None:
             self.sigma_mean = cast(ndarray, self.sigma_mean).item()
 
-        self.treedraws = convert_treedraws(self.treedraws)
+        self.treedraws = cast(
+            TreeDraws, convert_treedraws(cast(NamedList, self.treedraws))
+        )
 
     @partial(rmethod, rname='predict')
     def _predict(self, newdata: Float64[ndarray, 'm p'], **kwargs: Any) -> object:
