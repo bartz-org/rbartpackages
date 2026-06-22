@@ -138,6 +138,17 @@ class DataFrame(Protocol):
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
         """Export as an Arrow PyCapsule stream."""
 
+    @property
+    def columns(self) -> Iterable[str]:
+        """Column names."""
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Frame dimensions."""
+
+    def to_numpy(self) -> np.ndarray:
+        """Convert to a numpy array."""
+
 
 class String(AbstractDtype):
     """Represent a `numpy.str_` data dtype."""

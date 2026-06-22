@@ -118,15 +118,17 @@ def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
         assert_array_equal(pred, latent)  # 'ev' and 'bart' agree
 
     draws = bart.extract()  # training draws, expected-value scale
+    assert isinstance(draws, np.ndarray)
     if binary:
         assert_close_matrices(draws, phi(bart.yhat_train), rtol=1e-7)
     else:
-        assert_array_equal(draws, bart.yhat_train)
+        assert_array_equal(draws, nnone(bart.yhat_train))
     assert_close_matrices(bart.fitted(), draws.mean(axis=0), rtol=1e-7)
 
     trees = bart.extract(type='trees')
     # the tree structure comes back as a dataframe (polars if installed, else
     # pandas); both expose the column names through `.columns`
+    assert not isinstance(trees, np.ndarray)
     assert {'sample', 'tree', 'n', 'var', 'value'} <= set(trees.columns)
 
 

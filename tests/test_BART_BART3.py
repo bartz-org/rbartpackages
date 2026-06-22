@@ -154,6 +154,7 @@ def check_predict(
         assert isinstance(pred['binaryOffset'], float)
         assert_close_matrices(pred['prob_test_mean'], bart.prob_test_mean, rtol=1e-5)
     else:
+        assert isinstance(pred, np.ndarray)
         assert pred.shape == (NDPOST, m)
         assert_close_matrices(pred.mean(axis=0), bart.yhat_test_mean, rtol=1e-5)
 
