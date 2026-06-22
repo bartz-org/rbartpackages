@@ -109,7 +109,7 @@ def convert_treedraws(treedraws: NamedList) -> dict[str, Any]:
     }
 
 
-def convert_gbart_predict(out: object) -> object:
+def convert_gbart_predict(out: object) -> ndarray | dict[str, Any]:
     """
     Normalize the output of R's ``predict`` method for ``gbart``-like fits.
 
@@ -124,7 +124,7 @@ def convert_gbart_predict(out: object) -> object:
     The array unchanged, or the list as a dict of arrays with the scalar ``binaryOffset`` unwrapped.
     """
     if not hasattr(out, 'items'):
-        return out  # continuous: a draws matrix or its column means
+        return cast(ndarray, out)  # continuous: a draws matrix or its column means
     else:
         # binary: convert R's list (a NamedList) to a dict of arrays
         result = namedlist_to_dict(cast(NamedList, out))
@@ -134,7 +134,7 @@ def convert_gbart_predict(out: object) -> object:
 
 def populate_model_matrix(
     self: RObjectBase, kw: dict[str, Any], *, removed: bool
-) -> object:
+) -> ndarray | RObjectBase:
     """
     Run ``bartModelMatrix`` in R and populate a wrapper instance from its output.
 

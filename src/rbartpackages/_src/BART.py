@@ -477,7 +477,10 @@ class mc_gbart(RObjectBase):
         own column-count check) are not exposed.
         """
         kw = {'mc.cores': mc_cores, 'openmp': openmp, 'dodraws': dodraws, 'nice': nice}
-        return convert_gbart_predict(self._predict(newdata, **drop_none(kw)))
+        return cast(
+            ndarray | PredictBinary,
+            convert_gbart_predict(self._predict(newdata, **drop_none(kw))),
+        )
 
 
 class bartModelMatrix(RObjectBase):

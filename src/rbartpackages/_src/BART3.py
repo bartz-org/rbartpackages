@@ -586,7 +586,10 @@ class mc_gbart(RObjectBase):
             'dodraws': dodraws,
             'nice': nice,
         }
-        return convert_gbart_predict(self._predict(newdata, **drop_none(kw)))
+        return cast(
+            ndarray | PredictBinary,
+            convert_gbart_predict(self._predict(newdata, **drop_none(kw))),
+        )
 
 
 class bartModelMatrix(RObjectBase):

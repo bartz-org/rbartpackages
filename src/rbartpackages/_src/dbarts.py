@@ -430,7 +430,7 @@ class dbarts(RObjectBase):
         out = self._call_rmethod('run', **drop_none(kw))
         if out is robjects.NULL:
             return None  # R returns invisible NULL for zero samples
-        return namedlist_to_dict(out)
+        return cast(RunSamples, namedlist_to_dict(out))
 
     def sampleTreesFromPrior(self, *, updateState: bool | None = None) -> None:
         """
