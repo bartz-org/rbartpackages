@@ -28,11 +28,14 @@ import ctypes
 from functools import partial
 from types import SimpleNamespace
 
+import jax.numpy as jnp
 import numpy as np
+import polars as pl
 import pytest
 
 from rbartpackages import base
 from rbartpackages._src.base import fork_safe_native_threads, robjects_r
+from rbartpackages.base import RObjectBase
 from tests.util import assert_allclose, assert_array_equal
 
 
@@ -77,7 +80,7 @@ def test_rfunction_invalid_names() -> None:
 def test_doc_pulled_from_r_when_missing() -> None:
     """A subclass without a docstring gets the R help page as documentation."""
 
-    class Lm(base.RObjectBase):
+    class Lm(RObjectBase):
         _rfuncname = 'stats::lm'
 
     assert Lm.__doc__ is not None
@@ -92,23 +95,21 @@ def test_r_dataframe_converts_to_polars() -> None:
     The polars converter is summed after the pandas one, so its R-to-Python
     registration for data frames takes precedence; bare vectors are untouched.
     """
-    pl = pytest.importorskip('polars')
     rdf = robjects_r('data.frame(a = c(1.0, 2.0, 3.0), b = c(4L, 5L, 6L))')
-    out = base.RObjectBase._r2py(rdf)
+    out = RObjectBase._r2py(rdf)
     assert isinstance(out, pl.DataFrame)
     assert out.columns == ['a', 'b']
     assert out['a'].to_list() == [1.0, 2.0, 3.0]
     # a bare vector still converts to numpy, not a one-column frame
     assert_array_equal(
-        base.RObjectBase._r2py(robjects_r('c(1.0, 2.0)')), np.array([1.0, 2.0])
+        RObjectBase._r2py(robjects_r('c(1.0, 2.0)')), np.array([1.0, 2.0])
     )
 
 
 def test_polars_dataframe_converts_to_r() -> None:
     """A polars data frame converts to R (via pandas) and round-trips back."""
-    pl = pytest.importorskip('polars')
     df = pl.DataFrame({'a': [1.0, 2.0, 3.0], 'b': [4.0, 5.0, 6.0]})
-    out = base.RObjectBase._r2py(base.RObjectBase._py2r(df))
+    out = RObjectBase._r2py(RObjectBase._py2r(df))
     assert isinstance(out, pl.DataFrame)
     assert out.columns == ['a', 'b']
     assert out['a'].to_list() == [1.0, 2.0, 3.0]
@@ -116,14 +117,13 @@ def test_polars_dataframe_converts_to_r() -> None:
 
 def test_jax_array_converts_to_r() -> None:
     """A jax array converts to R, with 0-dim arrays unwrapped to scalars."""
-    jnp = pytest.importorskip('jax.numpy')
     assert_array_equal(
-        base.RObjectBase._r2py(base.RObjectBase._py2r(jnp.array([1.0, 2.0, 3.0]))),
+        RObjectBase._r2py(RObjectBase._py2r(jnp.array([1.0, 2.0, 3.0]))),
         np.array([1.0, 2.0, 3.0]),
     )
     # a 0-dim array is unwrapped, so it round-trips as a length-1 R vector
     assert_array_equal(
-        base.RObjectBase._r2py(base.RObjectBase._py2r(jnp.array(3.0))), np.array([3.0])
+        RObjectBase._r2py(RObjectBase._py2r(jnp.array(3.0))), np.array([3.0])
     )
 
 
