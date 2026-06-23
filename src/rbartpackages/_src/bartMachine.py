@@ -25,10 +25,10 @@
 """Implementation of `rbartpackages.bartMachine`."""
 
 from functools import partial
-from typing import Literal, TypedDict, cast, no_type_check
+from typing import Any, Literal, TypedDict, cast, no_type_check
 
 from jaxtyping import Float64, Integer
-from numpy import ndarray
+from numpy import dtype, ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 from rpy2.robjects.methods import RS4
@@ -81,9 +81,12 @@ def to_response(y: object) -> object:
     the right thing, pass through unchanged.
     """
     if isinstance(y, ndarray):
-        if y.dtype.kind in 'OSU':
-            return robjects_r['as.factor'](robjects.StrVector(y.astype(str).tolist()))
-        return robjects.FloatVector(y.astype(float).tolist())
+        # isinstance narrows to ndarray[..., dtype[object]], whose astype trips
+        # ty's overloads; re-bind with Any axes/dtype to type the casts below.
+        arr: ndarray[Any, dtype[Any]] = y
+        if arr.dtype.kind in 'OSU':
+            return robjects_r['as.factor'](robjects.StrVector(arr.astype(str).tolist()))
+        return robjects.FloatVector(arr.astype(float).tolist())
     return y
 
 

@@ -32,7 +32,7 @@ from inspect import cleandoc
 from re import fullmatch, match
 from textwrap import indent
 from types import FunctionType
-from typing import Any, Protocol, TypeAlias
+from typing import Any, ClassVar, Protocol, TypeAlias, cast
 
 import numpy as np
 from jaxtyping import AbstractDtype
@@ -65,8 +65,7 @@ else:
 
     def polars_to_r(df: pl.DataFrame) -> object:
         """Convert a polars dataframe or series to R through pandas."""
-        df = df.to_pandas()
-        return pandas2ri.py2rpy(df)
+        return pandas2ri.py2rpy(df.to_pandas())
 
     def r_to_polars(df: object) -> pl.DataFrame:
         """
@@ -93,10 +92,10 @@ else:
 
     def jax_to_r(x: jax.Array) -> object:
         """Convert a jax array to R, unwrapping 0-dim arrays to scalars."""
-        x = np.asarray(x)
-        if x.ndim == 0:
-            x = x[()]
-        return numpy2ri.py2rpy(x)
+        arr = np.asarray(x)
+        if arr.ndim == 0:
+            arr = arr[()]
+        return numpy2ri.py2rpy(arr)
 
     JAX_CONVERTER.py2rpy.register(jax.Array, jax_to_r)
 
@@ -291,7 +290,7 @@ class RObjectBase:
     def _kw2r(cls, kw: Mapping[str, Any]) -> dict[str, Any]:
         return {key: cls._py2r(value) for key, value in kw.items()}
 
-    _rfuncname: str = NotImplemented
+    _rfuncname: ClassVar[str] = cast(str, NotImplemented)
     """R function to call, as ``'<package>::<function>'``.
 
     Called with the initialization arguments converted to R objects; the R
