@@ -385,6 +385,9 @@ class RObjectBase:
 
     def __init_subclass__(cls, **kw: Any) -> None:
         """Automatically add R documentation to subclasses."""
+        if cls._rfuncname is NotImplemented:
+            # an abstract intermediate base that wraps no R function
+            return
         library, name = cls._rfuncname.split('::')
         page = Package(library).fetch(name)
         # the leading empty line keeps the docstring processors' dedent of

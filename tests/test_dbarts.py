@@ -354,7 +354,7 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
     assert nnone(fit.sigma).shape == (NDPOST,)
     assert isinstance(fit.sigest, float)
     # keepTrees defaults to True for rbart_vi; one wrapped sampler per chain
-    (sampler,) = fit.fit
+    (sampler,) = nnone(fit.fit)
     assert isinstance(sampler, dbarts.dbarts)
     assert fit.n_chains is None
     assert fit.seed.dtype == np.int32  # an R .Random.seed vector
