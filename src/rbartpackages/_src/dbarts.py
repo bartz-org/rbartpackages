@@ -841,7 +841,7 @@ class _BartBase(RObjectBase):
 
     def _wrap_fit(self) -> None:
         """Wrap the kept R sampler(s) in the `dbarts` interface, in place (per fit type)."""
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover - abstract; subclasses override
 
     def extract(
         self,

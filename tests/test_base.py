@@ -104,6 +104,29 @@ def test_r_dataframe_converts_to_polars() -> None:
     )
 
 
+def test_polars_dataframe_converts_to_r() -> None:
+    """A polars data frame converts to R (via pandas) and round-trips back."""
+    pl = pytest.importorskip('polars')
+    df = pl.DataFrame({'a': [1.0, 2.0, 3.0], 'b': [4.0, 5.0, 6.0]})
+    out = base.RObjectBase._r2py(base.RObjectBase._py2r(df))
+    assert isinstance(out, pl.DataFrame)
+    assert out.columns == ['a', 'b']
+    assert out['a'].to_list() == [1.0, 2.0, 3.0]
+
+
+def test_jax_array_converts_to_r() -> None:
+    """A jax array converts to R, with 0-dim arrays unwrapped to scalars."""
+    jnp = pytest.importorskip('jax.numpy')
+    assert_array_equal(
+        base.RObjectBase._r2py(base.RObjectBase._py2r(jnp.array([1.0, 2.0, 3.0]))),
+        np.array([1.0, 2.0, 3.0]),
+    )
+    # a 0-dim array is unwrapped, so it round-trips as a length-1 R vector
+    assert_array_equal(
+        base.RObjectBase._r2py(base.RObjectBase._py2r(jnp.array(3.0))), np.array([3.0])
+    )
+
+
 def test_fork_safe_native_threads(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pools are capped at one thread in the context and restored on exit."""
     calls: list[int] = []
