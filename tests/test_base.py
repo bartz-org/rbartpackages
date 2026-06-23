@@ -123,5 +123,5 @@ def test_fork_safe_native_threads(monkeypatch: pytest.MonkeyPatch) -> None:
     with fork_safe_native_threads():
         assert calls == [1]
     assert calls == [1, 4]
-    assert omp_get_max_threads.restype is ctypes.c_int
-    assert omp_set_num_threads.argtypes == (ctypes.c_int,)
+    assert omp_get_max_threads.restype is ctypes.c_int  # ty: ignore[unresolved-attribute]
+    assert omp_set_num_threads.argtypes == (ctypes.c_int,)  # ty: ignore[unresolved-attribute]

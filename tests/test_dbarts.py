@@ -39,7 +39,7 @@ from rpy2.rinterface_lib.embedded import RRuntimeError
 from rpy2.robjects.language import LangVector
 
 from rbartpackages import dbarts
-from rbartpackages._src.base import robjects_r
+from rbartpackages._src.base import RObjectBase, robjects_r
 from tests.util import (
     RegressionData,
     assert_array_equal,
@@ -570,7 +570,9 @@ CONSTRUCTOR_CASES = [
     CONSTRUCTOR_CASES,
     ids=[c.__name__ for c, _ in CONSTRUCTOR_CASES],
 )
-def test_signature_defaults_match_r(cls: type, unexposed: set[str]) -> None:
+def test_signature_defaults_match_r(
+    cls: type[RObjectBase], unexposed: set[str]
+) -> None:
     """The explicit constructor signatures stay in sync with the R functions.
 
     Every literal default in a Python signature must match its R counterpart,
