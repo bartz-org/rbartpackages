@@ -39,37 +39,29 @@ from inspect import getsourcefile, getsourcelines, isclass, unwrap
 from os import getenv
 from typing import Any
 
-import git
 from docutils import nodes
 from sphinx.ext.intersphinx import missing_reference
 
 # -- Version info ------------------------------------------------------------
-
-REPO = git.Repo(search_parent_directories=True)
-
-COMMIT = REPO.head.commit.hexsha
-UNCOMMITTED_STUFF = REPO.is_dirty()
-
-# Check if current commit has a version tag (vX.Y.Z)
-version = None
-for tag in REPO.tags:
-    if tag.commit == REPO.head.commit:
-        MATCH = re.match(r'^v(\d+\.\d+\.\d+)$', tag.name)
-        if MATCH:
-            version = MATCH.group(1)
-            break
-
-if version is None:
-    version = f'{COMMIT[:7]}{"+" if UNCOMMITTED_STUFF else ""}'
-
 import rbartpackages
+
+# git-derived version (hatch-vcs), e.g. '0.10.1.dev309+g42e25cebd'
+version = rbartpackages.__version__
+
+# GitHub ref for source links: the commit node from a dev version string, or the
+# release tag when building from a clean tagged commit.
+MATCH = re.search(r'\+g([0-9a-f]+)', version)
+GITHUB_REF = MATCH.group(1) if MATCH else f'v{version.partition("+")[0]}'
+
+# repository root, derived from this file's location (docs/conf.py)
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # rpy2 boots the embedded R on first import, and R sources `.Rprofile` (the
 # renv activation) only from its startup cwd, so trigger the boot with the cwd
 # pinned to the repository root: autodoc imports the wrapper modules later,
 # from whatever directory sphinx-build was invoked in (`make docs` uses
 # `docs/`), and without renv the R packages are missing or unpinned.
-with chdir(REPO.working_tree_dir):
+with chdir(REPO_ROOT):
     import rbartpackages.base
 
 # -- Project information -----------------------------------------------------
@@ -172,15 +164,12 @@ def setup(app) -> None:  # noqa: ANN001
     app.connect('missing-reference', _link_uninventoried_modules, priority=501)
 
 
-# decide whether to use viewcode or linkcode extension
+# decide whether to use viewcode or linkcode extension. Link to source on GitHub
+# when building the published docs in CI (the commit is pushed there); embed the
+# source otherwise, so local builds always have working source links.
 EXT = 'viewcode'  # copy source code in static website
-if getenv('RBARTPACKAGES_FORCE_LINKCODE'):
+if getenv('RBARTPACKAGES_FORCE_LINKCODE') or getenv('GITHUB_ACTIONS'):
     EXT = 'linkcode'  # links to code on github
-elif not UNCOMMITTED_STUFF:
-    BRANCHES = REPO.git.branch('--remotes', '--contains', COMMIT)
-    COMMIT_ON_GITHUB = bool(BRANCHES.strip())
-    if COMMIT_ON_GITHUB:
-        EXT = 'linkcode'  # links to code on github
 extensions.append(f'sphinx.ext.{EXT}')
 
 myst_enable_extensions = ['dollarmath']
@@ -313,4 +302,4 @@ def linkcode_resolve(domain: str, info: dict[str, str]) -> str | None:
         # re-exported foreign symbol; no in-repo source to link to
         return None
     path = fn_path.relative_to(root).as_posix()
-    return f'{prefix}/{COMMIT}/src/rbartpackages/{path}{linespec}'
+    return f'{prefix}/{GITHUB_REF}/src/rbartpackages/{path}{linespec}'
