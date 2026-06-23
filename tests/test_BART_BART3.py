@@ -34,6 +34,7 @@ import math
 from dataclasses import dataclass
 from inspect import Parameter
 from types import ModuleType
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -146,6 +147,7 @@ def check_predict(
         expected_keys = ['binaryOffset', 'prob_test', 'prob_test_mean', 'yhat_test']
         if isinstance(bart, BART3.gbart):
             # BART3 adds the prob.test.lower/upper quantiles to the output
+            pred = cast(BART3.PredictBinary, pred)
             expected_keys += ['prob_test_lower', 'prob_test_upper']
             assert np.all(pred['prob_test_lower'] <= pred['prob_test_upper'])
         assert sorted(pred) == sorted(expected_keys)
