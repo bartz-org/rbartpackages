@@ -440,4 +440,4 @@ def test_constructor_rejects_unknown_arguments() -> None:
     being silently swallowed.
     """
     with pytest.raises(TypeError, match='unexpected keyword'):
-        bartMachine.bartMachine(num_tree=10)  # misspelled num_trees
+        bartMachine.bartMachine(num_tree=10)  # ty: ignore[unknown-argument] # misspelled num_trees

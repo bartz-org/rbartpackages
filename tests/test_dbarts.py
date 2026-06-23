@@ -690,11 +690,11 @@ def test_constructors_reject_unknown_arguments(data: Data) -> None:
     `TypeError` instead of reaching R.
     """
     with pytest.raises(TypeError, match='unexpected keyword'):
-        dbarts.bart(data.x, data.y, n_trees=NTREE)  # the bart2 spelling of ntree
+        dbarts.bart(data.x, data.y, n_trees=NTREE)  # ty: ignore[unknown-argument] # the bart2 spelling of ntree
     with pytest.raises(TypeError, match='unexpected keyword'):
-        dbarts.dbarts(data.x, data.y, ntree=NTREE)  # the bart spelling
+        dbarts.dbarts(data.x, data.y, ntree=NTREE)  # ty: ignore[unknown-argument] # the bart spelling
     with pytest.raises(TypeError, match='unexpected keyword'):
-        dbarts.dbartsControl(bogus=1)
+        dbarts.dbartsControl(bogus=1)  # ty: ignore[unknown-argument]
 
 
 def test_bart2_forwards_control_kwargs(data: Data) -> None:

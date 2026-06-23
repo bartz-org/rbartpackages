@@ -257,7 +257,7 @@ def test_explicit_signature(pkg: ModuleType, data: Data) -> None:
         with pytest.raises(RRuntimeError, match='must be of a vector type'):
             pkg.gbart(data.x, data.y, lambda_=0.0, sigest=1.0, **common)
         with pytest.raises(TypeError, match='unexpected keyword'):
-            pkg.gbart(data.x, data.y, probs=(0.25, 0.75))  # BART3 extra
+            pkg.gbart(data.x, data.y, probs=(0.25, 0.75))  # ty: ignore[unknown-argument] # BART3 extra
     else:
         probs = 0.25, 0.75
         bart = pkg.gbart(
