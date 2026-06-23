@@ -39,13 +39,16 @@ from rpy2.rinterface_lib.embedded import RRuntimeError
 from rpy2.robjects.language import LangVector
 
 from rbartpackages import dbarts
+from rbartpackages._src.base import RObjectBase, robjects_r
 from tests.util import (
     RegressionData,
     assert_array_equal,
     assert_close_matrices,
     evaluated_r_formals,
     has_var_keyword,
+    kwdict,
     mapped_params,
+    nnone,
     regression_arrays,
 )
 
@@ -107,7 +110,7 @@ def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
     assert pred.shape == (NDPOST, m)
     # the kept trees evaluated at x_test reproduce the fit's test draws
     latent = bart.predict(data.x_test, type='bart')
-    assert_close_matrices(latent, bart.yhat_test, rtol=1e-7)
+    assert_close_matrices(latent, nnone(bart.yhat_test), rtol=1e-7)
     if binary:
         assert np.all((pred > 0) & (pred < 1))
         assert_close_matrices(pred, phi(latent), rtol=1e-7)
@@ -115,15 +118,17 @@ def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
         assert_array_equal(pred, latent)  # 'ev' and 'bart' agree
 
     draws = bart.extract()  # training draws, expected-value scale
+    assert isinstance(draws, np.ndarray)
     if binary:
-        assert_close_matrices(draws, phi(bart.yhat_train), rtol=1e-7)
+        assert_close_matrices(draws, phi(nnone(bart.yhat_train)), rtol=1e-7)
     else:
-        assert_array_equal(draws, bart.yhat_train)
+        assert_array_equal(draws, nnone(bart.yhat_train))
     assert_close_matrices(bart.fitted(), draws.mean(axis=0), rtol=1e-7)
 
     trees = bart.extract(type='trees')
     # the tree structure comes back as a dataframe (polars if installed, else
     # pandas); both expose the column names through `.columns`
+    assert not isinstance(trees, np.ndarray)
     assert {'sample', 'tree', 'n', 'var', 'value'} <= set(trees.columns)
 
 
@@ -151,8 +156,8 @@ def test_bart(data: Data, binary: bool, keeptrees: bool) -> None:
         verbose=False,
     )
 
-    assert bart.yhat_train.shape == (NDPOST, n)
-    assert bart.yhat_test.shape == (NDPOST, m)
+    assert nnone(bart.yhat_train).shape == (NDPOST, n)
+    assert nnone(bart.yhat_test).shape == (NDPOST, m)
     assert bart.varcount.shape == (NDPOST, p)
     assert bart.varcount.dtype == np.int32
     assert bart.k is None  # k is fixed by default, so it has no draws
@@ -165,7 +170,7 @@ def test_bart(data: Data, binary: bool, keeptrees: bool) -> None:
         assert bart.fit is None
         assert bart.n_chains == 1
     if binary:
-        assert_array_equal(bart.binaryOffset, np.zeros(n))
+        assert_array_equal(nnone(bart.binaryOffset), np.zeros(n))
         assert bart.sigma is None
         assert bart.first_sigma is None
         assert bart.sigest is None
@@ -173,17 +178,17 @@ def test_bart(data: Data, binary: bool, keeptrees: bool) -> None:
         assert bart.yhat_train_mean is None
         assert bart.yhat_test_mean is None
     else:
-        assert_array_equal(bart.y, data.y)
-        assert bart.sigma.shape == (NDPOST,)  # burn-in draws are in first_sigma
-        assert bart.first_sigma.shape == (NSKIP,)
+        assert_array_equal(nnone(bart.y), data.y)
+        assert nnone(bart.sigma).shape == (NDPOST,)  # burn-in draws are in first_sigma
+        assert nnone(bart.first_sigma).shape == (NSKIP,)
         assert isinstance(bart.sigest, float)
         assert math.isfinite(bart.sigest)
         assert bart.binaryOffset is None
         assert_close_matrices(
-            bart.yhat_train_mean, bart.yhat_train.mean(axis=0), rtol=1e-7
+            nnone(bart.yhat_train_mean), nnone(bart.yhat_train).mean(axis=0), rtol=1e-7
         )
         assert_close_matrices(
-            bart.yhat_test_mean, bart.yhat_test.mean(axis=0), rtol=1e-7
+            nnone(bart.yhat_test_mean), nnone(bart.yhat_test).mean(axis=0), rtol=1e-7
         )
 
     if keeptrees:
@@ -207,8 +212,8 @@ def test_bart_no_test_data(data: Data) -> None:
         keepevery=keepevery,
         verbose=False,
     )
-    assert bart.yhat_train.shape == (kept, n)
-    assert bart.sigma.shape == (kept,)
+    assert nnone(bart.yhat_train).shape == (kept, n)
+    assert nnone(bart.sigma).shape == (kept,)
     assert bart.yhat_test is None
     assert bart.yhat_test_mean is None
 
@@ -235,12 +240,12 @@ def test_bart_chains(data: Data, combine: bool) -> None:
     )
     draws = (nchain * NDPOST,) if combine else (nchain, NDPOST)
     burnin = (nchain * NSKIP,) if combine else (nchain, NSKIP)
-    assert bart.yhat_train.shape == (*draws, n)
-    assert bart.sigma.shape == draws
-    assert bart.first_sigma.shape == burnin
+    assert nnone(bart.yhat_train).shape == (*draws, n)
+    assert nnone(bart.sigma).shape == draws
+    assert nnone(bart.first_sigma).shape == burnin
     assert bart.varcount.shape == (*draws, p)
     assert bart.n_chains == nchain
-    assert bart.yhat_train_mean.shape == (n,)
+    assert nnone(bart.yhat_train_mean).shape == (n,)
 
 
 def test_bart_splitprobs(data: Data) -> None:
@@ -269,7 +274,7 @@ def test_bart_keepcall(data: Data) -> None:
     With ``keepcall=False`` R stores a dummy ``NULL()`` call rather than
     NULL, so the attribute is never exposed as None.
     """
-    kw = dict(
+    kw: kwdict = dict(
         x_train=data.x,
         y_train=data.y,
         ntree=NTREE,
@@ -304,19 +309,19 @@ def test_bart2(data: Data) -> None:
         n_threads=1,
         verbose=False,
     )
-    assert bart.yhat_train.shape == (n_chains, NDPOST, n)
-    assert bart.yhat_test.shape == (n_chains, NDPOST, m)
+    assert nnone(bart.yhat_train).shape == (n_chains, NDPOST, n)
+    assert nnone(bart.yhat_test).shape == (n_chains, NDPOST, m)
     assert bart.varcount.shape == (n_chains, NDPOST, p)
     assert np.all(bart.varcount[..., 0] > 0)
     assert_array_equal(
         bart.varcount[..., 1:], np.zeros((n_chains, NDPOST, p - 1), np.int32)
     )
-    assert bart.sigma.shape == (n_chains, NDPOST)
-    assert bart.first_sigma.shape == (n_chains, NSKIP)
+    assert nnone(bart.sigma).shape == (n_chains, NDPOST)
+    assert nnone(bart.first_sigma).shape == (n_chains, NSKIP)
     assert bart.n_chains == n_chains
-    assert bart.yhat_train_mean.shape == (n,)
-    assert bart.yhat_test_mean.shape == (m,)
-    assert_array_equal(bart.y, data.y)
+    assert nnone(bart.yhat_train_mean).shape == (n,)
+    assert nnone(bart.yhat_test_mean).shape == (m,)
+    assert_array_equal(nnone(bart.y), data.y)
 
 
 def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
@@ -341,15 +346,15 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
         n_thin=1,
         verbose=False,
     )
-    assert fit.yhat_train.shape == (NDPOST, n)
+    assert nnone(fit.yhat_train).shape == (NDPOST, n)
     assert fit.ranef.shape == (NDPOST, n_groups)
     assert fit.ranef_mean.shape == (n_groups,)
     assert fit.tau.shape == (NDPOST,)
     assert fit.first_tau.shape == (NSKIP,)
-    assert fit.sigma.shape == (NDPOST,)
+    assert nnone(fit.sigma).shape == (NDPOST,)
     assert isinstance(fit.sigest, float)
     # keepTrees defaults to True for rbart_vi; one wrapped sampler per chain
-    (sampler,) = fit.fit
+    (sampler,) = nnone(fit.fit)
     assert isinstance(sampler, dbarts.dbarts)
     assert fit.n_chains is None
     assert fit.seed.dtype == np.int32  # an R .Random.seed vector
@@ -381,7 +386,7 @@ def test_dbarts(data: Data) -> None:
         proposal_probs={'birth_death': 0.5, 'change': 0.1, 'swap': 0.4, 'birth': 0.5},
     )
 
-    out = sampler.run(NSKIP, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
     assert sorted(out) == ['sigma', 'test', 'train', 'varcount']
     assert out['train'].shape == (n, NDPOST)
     assert out['sigma'].shape == (NDPOST,)
@@ -399,7 +404,7 @@ def test_dbarts(data: Data) -> None:
     copy = sampler.copy()
     assert isinstance(copy, dbarts.dbarts)
     assert copy is not sampler
-    out2 = copy.run(NSKIP, NDPOST)
+    out2 = nnone(copy.run(NSKIP, NDPOST))
     assert out2['train'].shape == (n, NDPOST)
 
     # the sampler state can be drawn from the prior in place
@@ -415,9 +420,9 @@ def test_dbarts(data: Data) -> None:
 
     # replacing the response redirects the fit
     sampler.setResponse(-data.y)
-    y = robjects.r('function(d) d@y')(sampler.data._robject)
+    y = robjects_r('function(d) d@y')(sampler.data._robject)
     assert_array_equal(np.asarray(y), -data.y)
-    out3 = sampler.run(NSKIP, NDPOST)
+    out3 = nnone(sampler.run(NSKIP, NDPOST))
     assert_close_matrices(out3['train'].mean(axis=1), -data.y, rtol=0.5)
 
 
@@ -430,8 +435,8 @@ def test_dbarts_test_data(data: Data) -> None:
     m, _ = data.x_test.shape
     control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
     sampler = dbarts.dbarts(data.x, data.y, test=data.x_test, control=control)
-    out = sampler.run(NSKIP, NDPOST)
-    assert out['test'].shape == (m, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
+    assert nnone(out['test']).shape == (m, NDPOST)
 
     (item,) = sampler.state.items()  # one state per chain
     assert item.value.rclass[0] == 'dbartsState'
@@ -446,7 +451,7 @@ def test_dbarts_binary(data: Data) -> None:
     n, _ = data.x.shape
     control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
     sampler = dbarts.dbarts(data.x, data.biny, control=control)
-    out = sampler.run(NSKIP, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
     assert sorted(out) == ['k', 'sigma', 'test', 'train', 'varcount']
     assert out['train'].shape == (n, NDPOST)
     assert_array_equal(out['sigma'], np.ones(NDPOST))
@@ -471,34 +476,34 @@ def test_dbarts_setters(data: Data) -> None:
 
     # unforced updates report success (the trees are stumps, so no leaf can
     # end up empty); whole-matrix updates are forced by default
-    assert sampler.setPredictor(2 * data.x, forceUpdate=False).item()
-    assert sampler.setPredictor(data.x[:, 0], 1).item()  # column 1, 1-based
+    assert nnone(sampler.setPredictor(2 * data.x, forceUpdate=False)).item()
+    assert nnone(sampler.setPredictor(data.x[:, 0], 1)).item()  # column 1, 1-based
     sampler.setSigma(1.0)
 
     # replacing the test predictors changes the test draws
     sampler.setTestPredictor(data.x[:10])
-    out = sampler.run(NSKIP, NDPOST)
-    assert out['test'].shape == (10, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
+    assert nnone(out['test']).shape == (10, NDPOST)
 
     # the test offset enters the test draws only
     sampler.setTestPredictorAndOffset(data.x_test, 1e6)
-    out = sampler.run(0, NDPOST)
-    assert out['test'].shape == (m, NDPOST)
-    assert np.all(out['test'] > 1e5)
+    out = nnone(sampler.run(0, NDPOST))
+    assert nnone(out['test']).shape == (m, NDPOST)
+    assert np.all(nnone(out['test']) > 1e5)
     assert np.all(np.abs(out['train']) < 1e5)
     sampler.setTestOffset(0.0)
-    out = sampler.run(0, NDPOST)
-    assert np.all(np.abs(out['test']) < 1e5)
+    out = nnone(sampler.run(0, NDPOST))
+    assert np.all(np.abs(nnone(out['test'])) < 1e5)
 
     # the train offset lands in the data object; its effect on the draws is
     # not asserted because a large post-hoc offset makes the sampler bimodal
     # (absorbed by either the trees or sigma), so where the short-run draws
     # sit depends on the seed
     sampler.setOffset(np.full(n, 1e3))
-    offset = robjects.r('function(d) d@offset')(sampler.data._robject)
+    offset = robjects_r('function(d) d@offset')(sampler.data._robject)
     assert_array_equal(np.asarray(offset), np.full(n, 1e3))
     sampler.setOffset(0.0)  # scalars are expanded to the n observations
-    offset = robjects.r('function(d) d@offset')(sampler.data._robject)
+    offset = robjects_r('function(d) d@offset')(sampler.data._robject)
     assert_array_equal(np.asarray(offset), np.zeros(n))
 
     # the model (priors) can be grafted from another sampler, as the
@@ -508,14 +513,14 @@ def test_dbarts_setters(data: Data) -> None:
 
     # a dbartsData replaces the training data (and drops the test data)
     sampler.setData(dbarts.dbartsData('y ~ x1 + x2 + x3', data.frame.iloc[: n // 2]))
-    out = sampler.run(NSKIP, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
     assert out['train'].shape == (n // 2, NDPOST)
     assert out['test'] is None
 
     # the wrapped data property feeds back into setData: grafting another
     # sampler's data restores the full training set
     sampler.setData(other.data)
-    out = sampler.run(NSKIP, NDPOST)
+    out = nnone(sampler.run(NSKIP, NDPOST))
     assert out['train'].shape == (n, NDPOST)
 
     # a keepTrees control makes predict return the kept draws
@@ -541,11 +546,11 @@ def test_dbarts_show_trees(data: Data, capfd: pytest.CaptureFixture) -> None:
     assert capfd.readouterr().out.strip()
 
     # plot to a null device to keep the test headless
-    robjects.r('pdf(NULL)')
+    robjects_r('pdf(NULL)')
     try:
         sampler.plotTree(1)
     finally:
-        robjects.r('invisible(dev.off())')
+        robjects_r('invisible(dev.off())')
 
 
 # the wrapper constructors and the R arguments deliberately left unexposed (none:
@@ -565,7 +570,9 @@ CONSTRUCTOR_CASES = [
     CONSTRUCTOR_CASES,
     ids=[c.__name__ for c, _ in CONSTRUCTOR_CASES],
 )
-def test_signature_defaults_match_r(cls: type, unexposed: set[str]) -> None:
+def test_signature_defaults_match_r(
+    cls: type[RObjectBase], unexposed: set[str]
+) -> None:
     """The explicit constructor signatures stay in sync with the R functions.
 
     Every literal default in a Python signature must match its R counterpart,
@@ -576,7 +583,7 @@ def test_signature_defaults_match_r(cls: type, unexposed: set[str]) -> None:
     """
     rfuncname = cls._rfuncname
     params = mapped_params(cls, dots=True)
-    rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+    rnames = set(robjects_r(f'names(formals({rfuncname}))'))
     # R's `...` is forwarded by a **kwargs catch-all, not a named parameter
     assert ('...' in rnames) == has_var_keyword(cls), rfuncname
     rnames -= {'...'}
@@ -625,7 +632,7 @@ def test_generic_signatures_match_r(
     fit, so the signature defers each to R with ``None``.
     """
     method = f'getS3method("{generic}", "{rclass}", envir = asNamespace("dbarts"))'
-    rnames = set(robjects.r(f'names(formals({method}))')) - bound
+    rnames = set(robjects_r(f'names(formals({method}))')) - bound
     params = mapped_params(meth, skip={'newdata'}, dots=True)
     assert params.keys() <= rnames
     assert rnames - params.keys() == unexposed
@@ -667,7 +674,7 @@ def test_sampler_method_signatures_match_r(method: str, unexposed: set[str]) -> 
     arguments defer their R defaults (``NA``, the control object) with ``None``.
     """
     refmethods = 'dbarts:::dbartsSampler$def@refMethods'
-    rformals = robjects.r(f'names(formals({refmethods}${method}))')
+    rformals = robjects_r(f'names(formals({refmethods}${method}))')
     rnames = set() if rformals is robjects.NULL else set(rformals)
     params = mapped_params(getattr(dbarts.dbarts, method), dots=True)
     assert params.keys() <= rnames, method
@@ -685,11 +692,11 @@ def test_constructors_reject_unknown_arguments(data: Data) -> None:
     `TypeError` instead of reaching R.
     """
     with pytest.raises(TypeError, match='unexpected keyword'):
-        dbarts.bart(data.x, data.y, n_trees=NTREE)  # the bart2 spelling of ntree
+        dbarts.bart(data.x, data.y, n_trees=NTREE)  # ty: ignore[unknown-argument] # the bart2 spelling of ntree
     with pytest.raises(TypeError, match='unexpected keyword'):
-        dbarts.dbarts(data.x, data.y, ntree=NTREE)  # the bart spelling
+        dbarts.dbarts(data.x, data.y, ntree=NTREE)  # ty: ignore[unknown-argument] # the bart spelling
     with pytest.raises(TypeError, match='unexpected keyword'):
-        dbarts.dbartsControl(bogus=1)
+        dbarts.dbartsControl(bogus=1)  # ty: ignore[unknown-argument]
 
 
 def test_bart2_forwards_control_kwargs(data: Data) -> None:
@@ -698,11 +705,11 @@ def test_bart2_forwards_control_kwargs(data: Data) -> None:
     R's ``...`` reaches `dbartsControl`, so a valid control argument (here a
     deterministic `rngSeed`) is accepted, while a bogus one is rejected by R.
     """
-    common = dict(n_trees=NTREE, n_burn=NSKIP, n_samples=NDPOST, verbose=False)
+    common: kwdict = dict(n_trees=NTREE, n_burn=NSKIP, n_samples=NDPOST, verbose=False)
     fit = dbarts.bart2('y ~ x1 + x2 + x3', data=data.frame, rngSeed=1, **common)
     again = dbarts.bart2('y ~ x1 + x2 + x3', data=data.frame, rngSeed=1, **common)
     # the forwarded seed makes the single-threaded fit reproducible
-    assert_array_equal(fit.yhat_train, again.yhat_train)
+    assert_array_equal(nnone(fit.yhat_train), nnone(again.yhat_train))
 
     with pytest.raises(RRuntimeError, match='unknown arguments'):
         dbarts.bart2('y ~ x1', data=data.frame, totallybogus=1, **common)
@@ -716,7 +723,7 @@ def test_bart_explicit_signature(data: Data) -> None:
     `binaryOffset` component with the per-observation value used).
     """
     n, _ = data.x.shape
-    common = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST, verbose=False)
+    common: kwdict = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST, verbose=False)
 
     sigest = 2.5
     bart = dbarts.bart(data.x, data.y, sigest=sigest, **common)
@@ -724,4 +731,4 @@ def test_bart_explicit_signature(data: Data) -> None:
 
     offset = 0.3
     binary = dbarts.bart(data.x, data.biny, binaryOffset=offset, **common)
-    assert_array_equal(binary.binaryOffset, np.full(n, offset))
+    assert_array_equal(nnone(binary.binaryOffset), np.full(n, offset))

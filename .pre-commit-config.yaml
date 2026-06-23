@@ -132,17 +132,16 @@ repos:
         # self-scopes to files carrying the rbartpackages license header; `text`
         # just keeps binaries (e.g. .inv) out of the argument list.
         types: [text]
-      # ty is installed as a dev dependency (run `uv run --dev ty check`) and
-      # configured under [tool.ty] in pyproject.toml, but it is not yet wired in
-      # as a blocking hook: the codebase is not ty-clean (notably rpy2's
-      # dynamically typed objects in the tests). Re-enable once `ty check`
-      # passes, as a whole-project check (per-file would miss cross-file breakage):
-      #   - id: ty
-      #     name: ty check
-      #     entry: uv run --dev ty check
-      #     language: system
-      #     pass_filenames: false
-      #     types_or: [python, toml]
+      # ty is installed as a dev dependency and configured under [tool.ty] in
+      # pyproject.toml. Runs as a whole-project check (per-file would miss
+      # cross-file breakage), gated on python/toml files since those drive its
+      # result.
+      - id: ty
+        name: ty check
+        entry: uv run --dev ty check
+        language: system
+        pass_filenames: false
+        types_or: [python, toml]
       - id: check-returns-docstring
         name: forbid multi-line non-list `Returns` docstring sections
         # Matches a numpy-style `Returns` block whose first two non-blank lines

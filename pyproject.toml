@@ -278,6 +278,7 @@ ban-relative-imports = "all"
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "numpy.testing.assert_allclose".msg = "Use tests.util.assert_allclose (zero default tolerances)."
 "numpy.testing.assert_array_equal".msg = "Use tests.util.assert_array_equal (strict=True default)."
+"rpy2.robjects.r".msg = "Use rbartpackages._src.base.robjects_r, a typed alias; rpy2's robjects.r returns `object`, which blocks type checking."
 
 [tool.pydoclint]
 arg-type-hints-in-signature = true

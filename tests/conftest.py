@@ -30,7 +30,7 @@ from sys import modules
 import numpy as np
 import pytest
 
-from tests.util import int_seed
+from tests.util import int_seed, nnone
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def rng(request: pytest.FixtureRequest) -> np.random.Generator:
     nodeid = request.node.nodeid
     # exclude xdist_group suffixes because they are active only under xdist
     match = fullmatch(r'(.+?\.py::.+?(\[.+?\])?)(@.+)?', nodeid)
-    nodeid = match.group(1)
+    nodeid = nnone(match).group(1)
     seed = np.array([nodeid], np.bytes_).view(np.uint8)
     return np.random.default_rng(seed)
 
@@ -52,6 +52,7 @@ def seed_r(rng: np.random.Generator) -> None:
     R load rpy2 at import time, so they are always covered.
     """
     if 'rpy2.robjects' in modules:
-        from rpy2 import robjects  # noqa: PLC0415, deferred to keep R optional
+        # deferred to keep R optional
+        from rbartpackages._src.base import robjects_r  # noqa: PLC0415
 
-        robjects.r['set.seed'](int_seed(rng))
+        robjects_r['set.seed'](int_seed(rng))

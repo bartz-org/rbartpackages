@@ -28,14 +28,15 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import Parameter
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
-from rpy2 import robjects
 from rpy2.rinterface_lib.embedded import RRuntimeError
 
 from rbartpackages import bartMachine
+from rbartpackages._src.base import robjects_r
 from tests.util import (
     assert_allclose,
     assert_array_equal,
@@ -43,7 +44,9 @@ from tests.util import (
     evaluated_r_formals,
     has_var_keyword,
     int_seed,
+    kwdict,
     mapped_params,
+    nnone,
 )
 
 NTREE = 10
@@ -86,7 +89,7 @@ def data(rng: np.random.Generator) -> Data:
 
 
 def fit(
-    data: Data, rng: np.random.Generator, *, classification: bool = False, **kw: object
+    data: Data, rng: np.random.Generator, *, classification: bool = False, **kw: Any
 ) -> bartMachine.bartMachine:
     """Fit a small bartMachine model on `data`."""
     bartMachine.set_bart_machine_num_cores(1)
@@ -165,6 +168,11 @@ def test_regression(data: Data, rng: np.random.Generator) -> None:
     assert_close_matrices(bm.y, data.y.to_numpy())
 
     # in-sample outputs
+    assert bm.y_hat_train is not None
+    assert bm.residuals is not None
+    assert bm.L1_err_train is not None
+    assert bm.L2_err_train is not None
+    assert bm.rmse_train is not None
     assert bm.y_hat_train.shape == (n,)
     assert_close_matrices(bm.residuals, data.y.to_numpy() - bm.y_hat_train, rtol=1e-7)
     assert_allclose(bm.L1_err_train, np.abs(bm.residuals).sum(), rtol=1e-7)
@@ -211,22 +219,24 @@ def test_classification(data: Data, rng: np.random.Generator) -> None:
 
     check_common_attributes(bm, data)
     assert bm.pred_type == 'classification'
-    assert list(bm.y_levels) == ['a', 'b']  # alphabetical; the first is the target
+    assert list(nnone(bm.y_levels)) == ['a', 'b']  # alphabetical; first is target
     assert list(bm.y) == list(labels)
     # the response is encoded as 1 for the first (target) level
     assert_close_matrices(
         bm.model_matrix_training_data[:, p],
-        (labels == bm.y_levels[0]).to_numpy().astype(float),
+        (labels == nnone(bm.y_levels)[0]).to_numpy().astype(float),
     )
 
     # in-sample outputs
-    assert bm.p_hat_train.shape == (n,)
-    assert np.all((bm.p_hat_train >= 0) & (bm.p_hat_train <= 1))
+    p_hat_train = nnone(bm.p_hat_train)
+    y_levels = nnone(bm.y_levels)
+    assert p_hat_train.shape == (n,)
+    assert np.all((p_hat_train >= 0) & (p_hat_train <= 1))
     expected_labels = np.where(
-        bm.p_hat_train > bm.prob_rule_class, bm.y_levels[0], bm.y_levels[1]
+        p_hat_train > bm.prob_rule_class, y_levels[0], y_levels[1]
     )
-    assert_array_equal(bm.y_hat_train, expected_labels, strict=False)
-    assert bm.confusion_matrix.shape == (3, 3)
+    assert_array_equal(nnone(bm.y_hat_train), expected_labels, strict=False)
+    assert nnone(bm.confusion_matrix).shape == (3, 3)
     assert isinstance(bm.misclassification_error, float)
 
     # regression-only outputs are unset
@@ -244,10 +254,10 @@ def test_classification(data: Data, rng: np.random.Generator) -> None:
     # predict returns probabilities by default, labels with type='class'
     p_hat = bm.predict(data.x, verbose=False)
     assert p_hat.shape == (n,)
-    assert_close_matrices(p_hat, bm.p_hat_train, rtol=1e-7)
+    assert_close_matrices(p_hat, p_hat_train, rtol=1e-7)
     label_pred = bm.predict(data.x_test, type='class', verbose=False)
     assert label_pred.shape == (m,)
-    assert set(label_pred) <= set(bm.y_levels)
+    assert set(label_pred) <= set(y_levels)
 
     # bart_machine_get_posterior draws are probabilities
     post = bartMachine.bart_machine_get_posterior(bm, data.x_test, verbose=False)
@@ -287,7 +297,7 @@ def test_numpy_response(data: Data, rng: np.random.Generator) -> None:
     The wrapper builds a bare R numeric vector or factor directly, sidestepping
     the ``dim`` that rpy2's numpy bridge attaches (and that bartMachine rejects).
     """
-    common = dict(
+    common: kwdict = dict(
         num_trees=NTREE,
         num_burn_in=NBURN,
         num_iterations_after_burn_in=NPOST,
@@ -304,7 +314,7 @@ def test_numpy_response(data: Data, rng: np.random.Generator) -> None:
     labels = data.labels.to_numpy().astype(str)
     clf = bartMachine.bartMachine(X=data.x, y=labels, **common)
     assert clf.pred_type == 'classification'
-    assert list(clf.y_levels) == ['a', 'b']
+    assert list(nnone(clf.y_levels)) == ['a', 'b']
 
 
 def test_xy_interface(data: Data, rng: np.random.Generator) -> None:
@@ -341,7 +351,7 @@ def test_optional_inputs(data: Data, rng: np.random.Generator) -> None:
         # not lists, to the R list bartMachine wants
         interaction_constraints={'a': np.array([1, 2]), 'b': np.array([3])},
     )
-    assert_array_equal(bm.cov_prior_vec, cov_prior_vec)
+    assert_array_equal(nnone(bm.cov_prior_vec), cov_prior_vec)
     # the constraints come back as a tuple of 0-based column indices
     assert isinstance(bm.interaction_constraints, tuple)
     first, second = bm.interaction_constraints
@@ -384,7 +394,7 @@ def test_signature_defaults_match_r(
     diverging.
     """
     params = mapped_params(obj)
-    rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+    rnames = set(robjects_r(f'names(formals({rfuncname}))'))
     assert '...' not in rnames, rfuncname
     assert not has_var_keyword(obj), rfuncname
     assert params.keys() <= rnames, rfuncname
@@ -414,7 +424,7 @@ def test_predict_signature_matches_r() -> None:
     unexposed, and the defaults defer to R with ``None``.
     """
     method = 'getS3method("predict", "bartMachine", envir = asNamespace("bartMachine"))'
-    rnames = set(robjects.r(f'names(formals({method}))')) - {'object', 'new_data'}
+    rnames = set(robjects_r(f'names(formals({method}))')) - {'object', 'new_data'}
     params = mapped_params(bartMachine.bartMachine.predict, skip={'new_data'})
     assert params.keys() <= rnames
     assert rnames - params.keys() == {'...'}
@@ -430,4 +440,4 @@ def test_constructor_rejects_unknown_arguments() -> None:
     being silently swallowed.
     """
     with pytest.raises(TypeError, match='unexpected keyword'):
-        bartMachine.bartMachine(num_tree=10)  # misspelled num_trees
+        bartMachine.bartMachine(num_tree=10)  # ty: ignore[unknown-argument] # misspelled num_trees

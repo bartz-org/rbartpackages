@@ -27,11 +27,12 @@
 import ctypes
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from functools import partial, wraps
+from functools import wraps
 from inspect import cleandoc
 from re import fullmatch, match
 from textwrap import indent
-from typing import Any, Protocol
+from types import FunctionType
+from typing import Any, ClassVar, Protocol, TypeAlias, cast
 
 import numpy as np
 from jaxtyping import AbstractDtype
@@ -64,8 +65,7 @@ else:
 
     def polars_to_r(df: pl.DataFrame) -> object:
         """Convert a polars dataframe or series to R through pandas."""
-        df = df.to_pandas()
-        return pandas2ri.py2rpy(df)
+        return pandas2ri.py2rpy(df.to_pandas())
 
     def r_to_polars(df: object) -> pl.DataFrame:
         """
@@ -92,10 +92,10 @@ else:
 
     def jax_to_r(x: jax.Array) -> object:
         """Convert a jax array to R, unwrapping 0-dim arrays to scalars."""
-        x = np.asarray(x)
-        if x.ndim == 0:
-            x = x[()]
-        return numpy2ri.py2rpy(x)
+        arr = np.asarray(x)
+        if arr.ndim == 0:
+            arr = arr[()]
+        return numpy2ri.py2rpy(arr)
 
     JAX_CONVERTER.py2rpy.register(jax.Array, jax_to_r)
 
@@ -136,6 +136,17 @@ class DataFrame(Protocol):
 
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
         """Export as an Arrow PyCapsule stream."""
+
+    @property
+    def columns(self) -> Iterable[str]:
+        """Column names."""
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Frame dimensions."""
+
+    def to_numpy(self) -> np.ndarray:
+        """Convert to a numpy array."""
 
 
 class String(AbstractDtype):
@@ -180,6 +191,21 @@ def namedlist_to_dict(namedlist: NamedList) -> dict[str, Any]:
 
 
 R_IDENTIFIER = r'(?:[a-zA-Z]|\.(?![0-9]))[a-zA-Z0-9._]*'
+
+# Type of a value living on the R side of the rpy2 boundary. It is genuinely
+# dynamic (what R hands back depends on the code), so it aliases `Any`: a checker
+# treats it as gradual rather than as the opaque top type `object`, on which no
+# operation is allowed. Spelled as a named alias (not bare `Any`) so it reads as
+# "an R object" and stays clear of ruff's ANN401 ban on literal `Any`.
+RObject: TypeAlias = Any
+
+# Single typed seam for rpy2's dynamic R entry point. `robjects.r` returns
+# `object` from both `__call__` (evaluate an R code string) and `__getitem__`
+# (look up an R name or operator); re-exposing it as `RObject` here keeps every
+# R value gradual. This is the one place rbartpackages centralizes R access;
+# the rest of the codebase imports `robjects_r` instead of touching `robjects.r`
+# directly (banned via ruff's flake8-tidy-imports, hence the noqa below).
+robjects_r: RObject = robjects.r  # noqa: TID251, the one allowed use of robjects.r
 
 # In-process native thread pools to cap before R forks. R's
 # `parallel::mcparallel` (used by the `mc.*` BART functions) forks, but GNU
@@ -246,13 +272,13 @@ class RObjectBase:
 
     @classmethod
     def _py2r(cls, x: object) -> object:
-        if isinstance(x, __class__):
+        if isinstance(x, RObjectBase):
             return x._robject  # noqa: SLF001, same-class access
         with cls._convctx:
             return cls._converter.py2rpy(x)
 
     @classmethod
-    def _r2py(cls, x: object) -> object:
+    def _r2py(cls, x: object) -> RObject:
         with cls._convctx:
             return cls._converter.rpy2py(x)
 
@@ -264,7 +290,7 @@ class RObjectBase:
     def _kw2r(cls, kw: Mapping[str, Any]) -> dict[str, Any]:
         return {key: cls._py2r(value) for key, value in kw.items()}
 
-    _rfuncname: str = NotImplemented
+    _rfuncname: ClassVar[str] = cast(str, NotImplemented)
     """R function to call, as ``'<package>::<function>'``.
 
     Called with the initialization arguments converted to R objects; the R
@@ -272,7 +298,7 @@ class RObjectBase:
     components are converted to Python values and set as attributes.
     """
 
-    _robject: object
+    _robject: RObject
     """The R object returned by `_rfuncname`, whose components become attributes."""
 
     @property
@@ -302,10 +328,10 @@ class RObjectBase:
             and names is not robjects.NULL
         )
 
-    def _invoke_rfunc(self, args: Iterable[Any], kw: Mapping[str, Any]) -> object:
+    def _invoke_rfunc(self, args: Iterable[Any], kw: Mapping[str, Any]) -> RObject:
         """Load the namespace and call `_rfuncname` on the converted arguments."""
-        robjects.r(f'loadNamespace("{self._library}")')
-        func = robjects.r(self._rfuncname)
+        robjects_r(f'loadNamespace("{self._library}")')
+        func = robjects_r(self._rfuncname)
         return func(*self._args2r(args), **self._kw2r(kw))
 
     def _set_attrs_from_robject(self) -> None:
@@ -332,7 +358,7 @@ class RObjectBase:
         self._set_attrs_from_robject()
         return self
 
-    def _call_rmethod(self, rname: str, *args: Any, **kw: Any) -> object:
+    def _call_rmethod(self, rname: str, *args: Any, **kw: Any) -> RObject:
         """
         Call the R method `rname` of `_robject` on the converted arguments.
 
@@ -343,14 +369,14 @@ class RObjectBase:
         result is converted back to Python.
         """
         if isinstance(self._robject, RS4):
-            func = robjects.r['$'](self._robject, rname)
+            func = robjects_r['$'](self._robject, rname)
             out = func(*self._args2r(args), **self._kw2r(kw))
         else:
             if not fullmatch(R_IDENTIFIER, rname):
                 msg = f'Invalid R method name: {rname}'
                 raise ValueError(msg)
             rclass = self._robject.rclass[0]
-            func = robjects.r(
+            func = robjects_r(
                 f'getS3method("{rname}", "{rclass}", envir = asNamespace("{self._library}"))'
             )
             out = func(self._robject, *self._args2r(args), **self._kw2r(kw))
@@ -358,6 +384,9 @@ class RObjectBase:
 
     def __init_subclass__(cls, **kw: Any) -> None:
         """Automatically add R documentation to subclasses."""
+        if cls._rfuncname is NotImplemented:
+            # an abstract intermediate base that wraps no R function
+            return
         library, name = cls._rfuncname.split('::')
         page = Package(library).fetch(name)
         # the leading empty line keeps the docstring processors' dedent of
@@ -378,7 +407,7 @@ class RObjectBase:
         cls.__doc__ = '\n\n'.join(parts)
 
 
-def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
+def rmethod(meth: FunctionType, *, rname: str | None = None) -> Callable:
     """
     Automatically implement a method using the correspoding R method.
 
@@ -408,18 +437,18 @@ def rmethod(meth: Callable, *, rname: str | None = None) -> Callable:
     # can be determined at runtime
 
     @wraps(meth)
-    def impl(self: RObjectBase, *args: Any, **kw: Any) -> object:
+    def impl(self: RObjectBase, *args: Any, **kw: Any) -> RObject:
         return self._call_rmethod(rname, *args, **kw)
 
     return impl
 
 
 def rproperty(
-    meth: Callable | None = None,
+    meth: FunctionType,
     *,
     rname: str | None = None,
     wrap: type[RObjectBase] | None = None,
-) -> property | Callable[[Callable], property]:
+) -> property:
     """
     Automatically implement a read-only property using the corresponding R field.
 
@@ -431,8 +460,7 @@ def rproperty(
     ----------
     meth
         A method in a subclass of `RObjectBase`. The original implementation
-        is completely discarded. If not given, return a decorator instead, to
-        allow using the keyword arguments.
+        is completely discarded.
     rname
         The name of the field in R. If not specified, use the name of `meth`.
     wrap
@@ -447,18 +475,16 @@ def rproperty(
     --------
     >>> class MyRObject(RObjectBase):
     ...     _rfuncname = 'mypackage::myfunction'
-    ...     @rproperty(rname='my.field')
+    ...     @partial(rproperty, rname='my.field')
     ...     def my_field(self):
     ...         ...
     """
-    if meth is None:
-        return partial(rproperty, rname=rname, wrap=wrap)
     if rname is None:
         rname = meth.__name__
 
     @wraps(meth)
-    def impl(self: RObjectBase) -> object:
-        out = robjects.r['$'](self._robject, rname)
+    def impl(self: RObjectBase) -> RObject:
+        out = robjects_r['$'](self._robject, rname)
         if out is robjects.NULL:
             return None
         elif wrap is None:
@@ -469,7 +495,9 @@ def rproperty(
     return property(impl)
 
 
-def rfunction(func: Callable, *, library: str, rname: str | None = None) -> Callable:
+def rfunction(
+    func: FunctionType, *, library: str, rname: str | None = None
+) -> Callable:
     """
     Automatically implement a function using the corresponding R function.
 
@@ -507,11 +535,11 @@ def rfunction(func: Callable, *, library: str, rname: str | None = None) -> Call
     if not fullmatch(R_IDENTIFIER, rname):
         msg = f'Invalid R function name: {rname}'
         raise ValueError(msg)
-    robjects.r(f'loadNamespace("{library}")')
-    rfunc = robjects.r(f'{library}::{rname}')
+    robjects_r(f'loadNamespace("{library}")')
+    rfunc = robjects_r(f'{library}::{rname}')
 
     @wraps(func)
-    def impl(*args: Any, **kw: Any) -> object:
+    def impl(*args: Any, **kw: Any) -> RObject:
         out = rfunc(*RObjectBase._args2r(args), **RObjectBase._kw2r(kw))  # noqa: SLF001, base-class access
         return RObjectBase._r2py(out)  # noqa: SLF001, base-class access
 

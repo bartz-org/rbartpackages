@@ -25,10 +25,10 @@
 """Implementation of `rbartpackages.bartMachine`."""
 
 from functools import partial
-from typing import Literal, TypedDict, cast
+from typing import Any, Literal, TypedDict, cast, no_type_check
 
 from jaxtyping import Float64, Integer
-from numpy import ndarray
+from numpy import dtype, ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 from rpy2.robjects.methods import RS4
@@ -40,6 +40,7 @@ from rbartpackages._src.base import (
     drop_none,
     namedlist_to_dict,
     rfunction,
+    robjects_r,
 )
 
 # The JVM reads its options only at startup; rJava starts it when the
@@ -48,7 +49,7 @@ from rbartpackages._src.base import (
 # unless the user already set java.parameters, and always enable the
 # (incubating) Vector API, which bartMachine uses on JDK 16+ (fitting raises
 # NoClassDefFoundError without it).
-robjects.r("""local({
+robjects_r("""local({
     params <- getOption("java.parameters")
     if (is.null(params)) params <- "-Xmx5000m"
     options(java.parameters = union(params, "--add-modules=jdk.incubator.vector"))
@@ -80,9 +81,12 @@ def to_response(y: object) -> object:
     the right thing, pass through unchanged.
     """
     if isinstance(y, ndarray):
-        if y.dtype.kind in 'OSU':
-            return robjects.r['as.factor'](robjects.StrVector(y.astype(str).tolist()))
-        return robjects.FloatVector(y.astype(float).tolist())
+        # isinstance narrows to ndarray[..., dtype[object]], whose astype trips
+        # ty's overloads; re-bind with Any axes/dtype to type the casts below.
+        arr: ndarray[Any, dtype[Any]] = y
+        if arr.dtype.kind in 'OSU':
+            return robjects_r['as.factor'](robjects.StrVector(arr.astype(str).tolist()))
+        return robjects.FloatVector(arr.astype(float).tolist())
     return y
 
 
@@ -498,7 +502,7 @@ class bartMachine(RObjectBase):
                 setattr(self, name, pytype(value.item()))
 
         # R's difftime auto-selects its unit; have R convert to seconds
-        as_secs = robjects.r('function(t) as.numeric(t, units = "secs")')
+        as_secs = robjects_r('function(t) as.numeric(t, units = "secs")')
         time_to_build = as_secs(self._robject.rx2('time_to_build'))
         self.time_to_build = self._r2py(time_to_build).item()
 
@@ -594,6 +598,7 @@ def bart_machine_num_cores() -> int:
 
 
 @partial(rfunction, library='bartMachine')
+@no_type_check
 def get_sigsqs(
     bart_machine: bartMachine,
     after_burn_in: bool = True,

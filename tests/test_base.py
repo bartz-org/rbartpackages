@@ -28,18 +28,20 @@ import ctypes
 from functools import partial
 from types import SimpleNamespace
 
+import jax.numpy as jnp
 import numpy as np
+import polars as pl
 import pytest
-from rpy2 import robjects
 
 from rbartpackages import base
-from rbartpackages._src.base import fork_safe_native_threads
+from rbartpackages._src.base import fork_safe_native_threads, robjects_r
+from rbartpackages.base import RObjectBase
 from tests.util import assert_allclose, assert_array_equal
 
 
 def stats4_loaded() -> bool:
     """Whether the R namespace stats4 is loaded."""
-    return bool(robjects.r('isNamespaceLoaded("stats4")')[0])
+    return bool(robjects_r('isNamespaceLoaded("stats4")')[0])
 
 
 def test_rfunction() -> None:
@@ -60,7 +62,7 @@ def test_rfunction() -> None:
 
     assert stats4_loaded()
 
-    fit = mle(robjects.r('function(m) (m - 3) ^ 2'), start={'m': 0.0})
+    fit = mle(robjects_r('function(m) (m - 3) ^ 2'), start={'m': 0.0})
     assert_allclose(coef(fit).item(), 3.0, rtol=1e-4)
 
 
@@ -78,7 +80,7 @@ def test_rfunction_invalid_names() -> None:
 def test_doc_pulled_from_r_when_missing() -> None:
     """A subclass without a docstring gets the R help page as documentation."""
 
-    class Lm(base.RObjectBase):
+    class Lm(RObjectBase):
         _rfuncname = 'stats::lm'
 
     assert Lm.__doc__ is not None
@@ -93,15 +95,35 @@ def test_r_dataframe_converts_to_polars() -> None:
     The polars converter is summed after the pandas one, so its R-to-Python
     registration for data frames takes precedence; bare vectors are untouched.
     """
-    pl = pytest.importorskip('polars')
-    rdf = robjects.r('data.frame(a = c(1.0, 2.0, 3.0), b = c(4L, 5L, 6L))')
-    out = base.RObjectBase._r2py(rdf)
+    rdf = robjects_r('data.frame(a = c(1.0, 2.0, 3.0), b = c(4L, 5L, 6L))')
+    out = RObjectBase._r2py(rdf)
     assert isinstance(out, pl.DataFrame)
     assert out.columns == ['a', 'b']
     assert out['a'].to_list() == [1.0, 2.0, 3.0]
     # a bare vector still converts to numpy, not a one-column frame
     assert_array_equal(
-        base.RObjectBase._r2py(robjects.r('c(1.0, 2.0)')), np.array([1.0, 2.0])
+        RObjectBase._r2py(robjects_r('c(1.0, 2.0)')), np.array([1.0, 2.0])
+    )
+
+
+def test_polars_dataframe_converts_to_r() -> None:
+    """A polars data frame converts to R (via pandas) and round-trips back."""
+    df = pl.DataFrame({'a': [1.0, 2.0, 3.0], 'b': [4.0, 5.0, 6.0]})
+    out = RObjectBase._r2py(RObjectBase._py2r(df))
+    assert isinstance(out, pl.DataFrame)
+    assert out.columns == ['a', 'b']
+    assert out['a'].to_list() == [1.0, 2.0, 3.0]
+
+
+def test_jax_array_converts_to_r() -> None:
+    """A jax array converts to R, with 0-dim arrays unwrapped to scalars."""
+    assert_array_equal(
+        RObjectBase._r2py(RObjectBase._py2r(jnp.array([1.0, 2.0, 3.0]))),
+        np.array([1.0, 2.0, 3.0]),
+    )
+    # a 0-dim array is unwrapped, so it round-trips as a length-1 R vector
+    assert_array_equal(
+        RObjectBase._r2py(RObjectBase._py2r(jnp.array(3.0))), np.array([3.0])
     )
 
 
@@ -124,5 +146,5 @@ def test_fork_safe_native_threads(monkeypatch: pytest.MonkeyPatch) -> None:
     with fork_safe_native_threads():
         assert calls == [1]
     assert calls == [1, 4]
-    assert omp_get_max_threads.restype is ctypes.c_int
-    assert omp_set_num_threads.argtypes == (ctypes.c_int,)
+    assert omp_get_max_threads.restype is ctypes.c_int  # ty: ignore[unresolved-attribute]
+    assert omp_set_num_threads.argtypes == (ctypes.c_int,)  # ty: ignore[unresolved-attribute]

@@ -25,11 +25,12 @@
 """Implementation of `rbartpackages.BART`."""
 
 from functools import partial
-from typing import Any, Literal, NamedTuple, TypedDict
+from typing import Any, Literal, NamedTuple, TypedDict, cast
 
 from jaxtyping import Bool, Float64, Int32, Integer
 from numpy import ndarray
 from rpy2 import robjects
+from rpy2.rlike.container import NamedList
 
 from rbartpackages._src.bartcommon import (
     convert_gbart_predict,
@@ -398,9 +399,9 @@ class mc_gbart(RObjectBase):
             super().__init__(**drop_none(kw))
 
         # fix up attributes
-        self.LPML = self.LPML.item()
-        self.ndpost = self.ndpost.astype(int).item()
-        self.offset = self.offset.item()
+        self.LPML = cast(ndarray, self.LPML).item()
+        self.ndpost = cast(ndarray, self.ndpost).astype(int).item()
+        self.offset = cast(ndarray, self.offset).item()
         self.proc_time = ProcTime(*map(float, self.proc_time))
 
         # varcount has the kept columns, so pass their count to reconstruct the
@@ -410,9 +411,11 @@ class mc_gbart(RObjectBase):
         )
 
         if self.sigma_mean is not None:
-            self.sigma_mean = self.sigma_mean.item()
+            self.sigma_mean = cast(ndarray, self.sigma_mean).item()
 
-        self.treedraws = convert_treedraws(self.treedraws)
+        self.treedraws = cast(
+            TreeDraws, convert_treedraws(cast(NamedList, self.treedraws))
+        )
 
     @partial(rmethod, rname='predict')
     def _predict(self, newdata: Float64[ndarray, 'm p'], **kwargs: Any) -> object:
@@ -477,7 +480,10 @@ class mc_gbart(RObjectBase):
         own column-count check) are not exposed.
         """
         kw = {'mc.cores': mc_cores, 'openmp': openmp, 'dodraws': dodraws, 'nice': nice}
-        return convert_gbart_predict(self._predict(newdata, **drop_none(kw)))
+        return cast(
+            ndarray | PredictBinary,
+            convert_gbart_predict(self._predict(newdata, **drop_none(kw))),
+        )
 
 
 class bartModelMatrix(RObjectBase):

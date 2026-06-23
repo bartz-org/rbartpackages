@@ -226,6 +226,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [tests]
 
+    # No R here, but `uv run` syncs the project and builds rpy2-rinterface; force
+    # ABI mode so it builds without R (see the diffcov job for the rationale).
+    env:
+      RPY2_CFFI_MODE: ABI
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -275,6 +280,13 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     needs: [tests]
+
+    # This job has no R, but `uv run` syncs the project, which builds
+    # rpy2-rinterface. API mode needs R, so force ABI mode to build without it
+    # (coverage/diff-cover never import rpy2). Otherwise a uv cache miss (e.g. a
+    # pyproject.toml change) makes the from-source build fail.
+    env:
+      RPY2_CFFI_MODE: ABI
 
     steps:
       - name: Checkout repository

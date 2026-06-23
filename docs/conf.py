@@ -32,11 +32,12 @@ import datetime
 import pathlib
 import re
 import sys
-from contextlib import chdir
+from contextlib import chdir  # ty: ignore[unresolved-import] (runs in py 3.14)
 from enum import Enum
 from functools import cached_property
 from inspect import getsourcefile, getsourcelines, isclass, unwrap
 from os import getenv
+from typing import Any
 
 import git
 from docutils import nodes
@@ -276,7 +277,7 @@ def linkcode_resolve(domain: str, info: dict[str, str]) -> str | None:
     submod = sys.modules.get(modname)
     assert submod
 
-    obj = submod
+    obj: Any = submod
     for part in fullname.split('.'):
         if isclass(obj) and any(
             part in getattr(klass, '__annotations__', {}) for klass in obj.__mro__

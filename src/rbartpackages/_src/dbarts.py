@@ -24,7 +24,8 @@
 
 """Implementation of `rbartpackages.dbarts`."""
 
-from typing import Literal
+from functools import partial
+from typing import Literal, cast, no_type_check
 
 from jaxtyping import Float64, Int32, Integer
 from numpy import ndarray
@@ -42,6 +43,7 @@ from rbartpackages._src.base import (
     String,
     drop_none,
     namedlist_to_dict,
+    robjects_r,
     rproperty,
 )
 
@@ -66,7 +68,7 @@ def to_named_vector(value: object) -> object:
     """
     if isinstance(value, dict):
         vector = robjects.FloatVector(list(value.values()))
-        return robjects.r('setNames')(vector, list(value.keys()))
+        return robjects_r('setNames')(vector, list(value.keys()))
     return value
 
 
@@ -366,17 +368,20 @@ class dbarts(RObjectBase):
         }
         super().__init__(**drop_none(kw))
 
-    @rproperty(wrap=dbartsControl)
+    @partial(rproperty, wrap=dbartsControl)
+    @no_type_check
     def control(self) -> dbartsControl:
-        """The control object of the sampler, as a `dbartsControl` wrapper."""
+        """Return the control object of the sampler, as a `dbartsControl` wrapper."""
         ...
 
-    @rproperty(wrap=dbartsData)
+    @partial(rproperty, wrap=dbartsData)
+    @no_type_check
     def data(self) -> dbartsData:
-        """The data object of the sampler, as a `dbartsData` wrapper."""
+        """Return the data object of the sampler, as a `dbartsData` wrapper."""
         ...
 
     @rproperty
+    @no_type_check
     def model(self) -> RS4:
         """The model (priors) object of the sampler (an R ``dbartsModel``)."""
         ...
@@ -425,7 +430,7 @@ class dbarts(RObjectBase):
         out = self._call_rmethod('run', **drop_none(kw))
         if out is robjects.NULL:
             return None  # R returns invisible NULL for zero samples
-        return namedlist_to_dict(out)
+        return cast(RunSamples, namedlist_to_dict(out))
 
     def sampleTreesFromPrior(self, *, updateState: bool | None = None) -> None:
         """
@@ -753,7 +758,150 @@ class dbarts(RObjectBase):
         self._call_rmethod('plotTree', treeNum, **drop_none(kw))
 
 
-class bart(RObjectBase):
+class _BartBase(RObjectBase):
+    """
+    Common base of the `dbarts` BART fitters.
+
+    Holds the output attributes and the post-processing and
+    `extract`/`fitted` accessors shared by `bart`, `bart2`, and `rbart_vi`.
+    The fitting interface and the `fit`/`_wrap_fit`/`predict` members, which
+    differ by fit type, live on the concrete subclasses.
+    """
+
+    binaryOffset: Float64[ndarray, ' n'] | None = None
+    """Per-observation offset on the latent probit scale (binary outcomes only)."""
+
+    call: LangVector
+    """The R call that created the fit.
+
+    With ``keepcall=False`` this is a dummy ``NULL()`` call, not ``None``.
+    """
+
+    first_k: Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip'] | None = None
+    """Burn-in draws of `k` (only when `k` is given a hyperprior)."""
+
+    first_sigma: (
+        Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip'] | None
+    ) = None
+    """Burn-in error-SD draws (continuous outcomes only)."""
+
+    k: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost'] | None = None
+    """End-node-prior `k` draws (only when `k` is given a hyperprior)."""
+
+    n_chains: int | None = None
+    """Number of MCMC chains; ``None`` when the sampler is kept in `fit`."""
+
+    sigest: float | None = None
+    """Rough residual SD used to set the sigma prior (continuous outcomes only)."""
+
+    sigma: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost'] | None = None
+    """Kept error-SD draws, continuous outcomes only (burn-in is in `first_sigma`)."""
+
+    varcount: Int32[ndarray, 'ndpost p'] | Int32[ndarray, 'nchain ndpost p']
+    """Per-draw count of splits on each variable, summed over trees."""
+
+    y: Float64[ndarray, ' n'] | None = None
+    """The training responses (continuous outcomes only)."""
+
+    yhat_test: (
+        Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m'] | None
+    ) = None
+    """Test-point posterior function draws; ``None`` without test data."""
+
+    yhat_test_mean: Float64[ndarray, ' m'] | None = None
+    """Posterior mean of `yhat_test` (continuous outcomes with test data only)."""
+
+    yhat_train: (
+        Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | None
+    ) = None
+    """Training-point posterior function draws (latent probit scale for binary).
+
+    ``None`` with ``keeptrainfits=False``.
+    """
+
+    yhat_train_mean: Float64[ndarray, ' n'] | None = None
+    """Posterior mean of `yhat_train` (continuous outcomes only)."""
+
+    def _postprocess(self) -> None:
+        """
+        Normalize the fit's R components into Python values.
+
+        R fills inapplicable list components with NULL (e.g. ``yhat.test``
+        without test data); expose them as None like the dropped ones, unwrap
+        the scalar attributes, and wrap the kept sampler.
+        """
+        for name, value in list(vars(self).items()):
+            if value is robjects.NULL:
+                setattr(self, name, None)
+        if self.n_chains is not None:
+            self.n_chains = cast(ndarray, self.n_chains).item()
+        if self.sigest is not None:
+            self.sigest = cast(ndarray, self.sigest).item()
+        self._wrap_fit()
+
+    def _wrap_fit(self) -> None:
+        """Wrap the kept R sampler(s) in the `dbarts` interface, in place (per fit type)."""
+        raise NotImplementedError  # pragma: no cover - abstract; subclasses override
+
+    def extract(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart', 'trees'] | None = None,  # noqa: A002 mirrors the R argument name
+        sample: Literal['train', 'test'] | None = None,
+        combineChains: bool | None = None,
+    ) -> Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | DataFrame:
+        """
+        Return the kept draws for the training (default) or test points.
+
+        Like `predict`, the draws are on the expected-value scale by default.
+        With ``type='trees'`` (requires ``keeptrees=True``) the tree
+        structures are returned as a data frame instead. Arguments left to
+        ``None`` are omitted from the R call.
+
+        Parameters
+        ----------
+        type
+            Quantity returned: ``'ev'``, ``'ppd'``, ``'bart'`` (see `predict`),
+            or ``'trees'`` for the tree structures.
+        sample
+            Which points to extract: ``'train'`` or ``'test'``.
+        combineChains
+            Whether the chains are stacked into the draws axis rather than
+            kept on a leading `nchain` axis.
+
+        Returns
+        -------
+        The draws at the requested points, or the tree-structure data frame with ``type='trees'``.
+        """
+        kw = {'type': type, 'sample': sample, 'combineChains': combineChains}
+        return self._call_rmethod('extract', **drop_none(kw))
+
+    def fitted(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart'] | None = None,  # noqa: A002 mirrors the R argument name
+        sample: Literal['train', 'test'] | None = None,
+    ) -> Float64[ndarray, ' n']:
+        """
+        Return the posterior mean for the training (default) or test points.
+
+        Parameters
+        ----------
+        type
+            Quantity averaged: ``'ev'``, ``'ppd'``, or ``'bart'`` (see
+            `predict`).
+        sample
+            Which points to use: ``'train'`` or ``'test'``.
+
+        Returns
+        -------
+        The posterior mean at the requested points.
+        """
+        kw = {'type': type, 'sample': sample}
+        return self._call_rmethod('fitted', **drop_none(kw))
+
+
+class bart(_BartBase):
     """
     Fit BART to continuous or binary outcomes (matrix interface).
 
@@ -855,62 +1003,8 @@ class bart(RObjectBase):
 
     _rfuncname = 'dbarts::bart'
 
-    binaryOffset: Float64[ndarray, ' n'] | None = None
-    """Per-observation offset on the latent probit scale (binary outcomes only)."""
-
-    call: LangVector
-    """The R call that created the fit.
-
-    With ``keepcall=False`` this is a dummy ``NULL()`` call, not ``None``.
-    """
-
-    first_k: Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip'] | None = None
-    """Burn-in draws of `k` (only when `k` is given a hyperprior)."""
-
-    first_sigma: (
-        Float64[ndarray, ' nskip'] | Float64[ndarray, 'nchain nskip'] | None
-    ) = None
-    """Burn-in error-SD draws (continuous outcomes only)."""
-
     fit: dbarts | None = None
     """The sampler as a `dbarts` object, kept only with ``keeptrees`` or ``keepsampler``."""
-
-    k: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost'] | None = None
-    """End-node-prior `k` draws (only when `k` is given a hyperprior)."""
-
-    n_chains: int | None = None
-    """Number of MCMC chains; ``None`` when the sampler is kept in `fit`."""
-
-    sigest: float | None = None
-    """Rough residual SD used to set the sigma prior (continuous outcomes only)."""
-
-    sigma: Float64[ndarray, ' ndpost'] | Float64[ndarray, 'nchain ndpost'] | None = None
-    """Kept error-SD draws, continuous outcomes only (burn-in is in `first_sigma`)."""
-
-    varcount: Int32[ndarray, 'ndpost p'] | Int32[ndarray, 'nchain ndpost p']
-    """Per-draw count of splits on each variable, summed over trees."""
-
-    y: Float64[ndarray, ' n'] | None = None
-    """The training responses (continuous outcomes only)."""
-
-    yhat_test: (
-        Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m'] | None
-    ) = None
-    """Test-point posterior function draws; ``None`` without test data."""
-
-    yhat_test_mean: Float64[ndarray, ' m'] | None = None
-    """Posterior mean of `yhat_test` (continuous outcomes with test data only)."""
-
-    yhat_train: (
-        Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | None
-    ) = None
-    """Training-point posterior function draws (latent probit scale for binary).
-
-    ``None`` with ``keeptrainfits=False``.
-    """
-
-    yhat_train_mean: Float64[ndarray, ' n'] | None = None
-    """Posterior mean of `yhat_train` (continuous outcomes only)."""
 
     def __init__(
         self,
@@ -983,28 +1077,10 @@ class bart(RObjectBase):
         RObjectBase.__init__(self, **drop_none(kw))
         self._postprocess()
 
-    def _postprocess(self) -> None:
-        """
-        Normalize the fit's R components into Python values.
-
-        R fills inapplicable list components with NULL (e.g. ``yhat.test``
-        without test data); expose them as None like the dropped ones, unwrap
-        the scalar attributes, and wrap the kept sampler.
-        """
-        for name, value in list(vars(self).items()):
-            if value is robjects.NULL:
-                setattr(self, name, None)
-        if self.n_chains is not None:
-            self.n_chains = self.n_chains.item()
-        if self.sigest is not None:
-            self.sigest = self.sigest.item()
-        if self.fit is not None:
-            self.fit = self._wrap_fit(self.fit)
-
-    @staticmethod
-    def _wrap_fit(fit: RS4) -> dbarts:
+    def _wrap_fit(self) -> None:
         """Wrap the kept R sampler in the `dbarts` interface."""
-        return dbarts._wrap(fit)  # noqa: SLF001, base-class access
+        if self.fit is not None:
+            self.fit = dbarts._wrap(self.fit)  # noqa: SLF001, base-class access
 
     def predict(
         self,
@@ -1052,63 +1128,6 @@ class bart(RObjectBase):
             'n.threads': n_threads,
         }
         return self._call_rmethod('predict', newdata, **drop_none(kw))
-
-    def extract(
-        self,
-        *,
-        type: Literal['ev', 'ppd', 'bart', 'trees'] | None = None,  # noqa: A002 mirrors the R argument name
-        sample: Literal['train', 'test'] | None = None,
-        combineChains: bool | None = None,
-    ) -> Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | DataFrame:
-        """
-        Return the kept draws for the training (default) or test points.
-
-        Like `predict`, the draws are on the expected-value scale by default.
-        With ``type='trees'`` (requires ``keeptrees=True``) the tree
-        structures are returned as a data frame instead. Arguments left to
-        ``None`` are omitted from the R call.
-
-        Parameters
-        ----------
-        type
-            Quantity returned: ``'ev'``, ``'ppd'``, ``'bart'`` (see `predict`),
-            or ``'trees'`` for the tree structures.
-        sample
-            Which points to extract: ``'train'`` or ``'test'``.
-        combineChains
-            Whether the chains are stacked into the draws axis rather than
-            kept on a leading `nchain` axis.
-
-        Returns
-        -------
-        The draws at the requested points, or the tree-structure data frame with ``type='trees'``.
-        """
-        kw = {'type': type, 'sample': sample, 'combineChains': combineChains}
-        return self._call_rmethod('extract', **drop_none(kw))
-
-    def fitted(
-        self,
-        *,
-        type: Literal['ev', 'ppd', 'bart'] | None = None,  # noqa: A002 mirrors the R argument name
-        sample: Literal['train', 'test'] | None = None,
-    ) -> Float64[ndarray, ' n']:
-        """
-        Return the posterior mean for the training (default) or test points.
-
-        Parameters
-        ----------
-        type
-            Quantity averaged: ``'ev'``, ``'ppd'``, or ``'bart'`` (see
-            `predict`).
-        sample
-            Which points to use: ``'train'`` or ``'test'``.
-
-        Returns
-        -------
-        The posterior mean at the requested points.
-        """
-        kw = {'type': type, 'sample': sample}
-        return self._call_rmethod('fitted', **drop_none(kw))
 
 
 class bart2(bart):
@@ -1296,7 +1315,7 @@ class bart2(bart):
         self._postprocess()
 
 
-class rbart_vi(bart2):
+class rbart_vi(_BartBase):
     """
     Fit BART with additive group random intercepts.
 
@@ -1517,10 +1536,10 @@ class rbart_vi(bart2):
         RObjectBase.__init__(self, **drop_none(kw))
         self._postprocess()
 
-    @staticmethod
-    def _wrap_fit(fit: NamedList) -> tuple[dbarts, ...]:
+    def _wrap_fit(self) -> None:
         """Wrap the R list of per-chain samplers in the `dbarts` interface."""
-        return tuple(map(dbarts._wrap, fit))  # noqa: SLF001, base-class access
+        if self.fit is not None:
+            self.fit = tuple(map(dbarts._wrap, cast(NamedList, self.fit)))  # noqa: SLF001, base-class access
 
     def predict(
         self,

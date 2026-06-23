@@ -26,20 +26,22 @@
 
 from dataclasses import dataclass
 from inspect import Parameter
+from typing import Any
 
 import numpy as np
 import pytest
 from jaxtyping import Float64
 from numpy import ndarray
-from rpy2 import robjects
 
 from rbartpackages import missBART
+from rbartpackages._src.base import robjects_r
 from tests.util import (
     assert_array_equal,
     evaluated_r_formals,
     has_var_keyword,
     int_seed,
     mapped_params,
+    nnone,
 )
 
 N_TREES = 2
@@ -89,10 +91,10 @@ def make_data(rng: np.random.Generator, p: int) -> Data:
 
 
 def fit_missBART2(
-    data: Data, rng: np.random.Generator, **kw: object
+    data: Data, rng: np.random.Generator, **kw: Any
 ) -> missBART.missBART2:
     """Fit `missBART2` on `data` with small, fast MCMC settings."""
-    robjects.r['set.seed'](int_seed(rng))
+    robjects_r['set.seed'](int_seed(rng))
     return missBART.missBART2(
         data.x,
         data.y,
@@ -143,7 +145,7 @@ def test_fit(rng: np.random.Generator, p: int) -> None:
     assert (fit.omega_post > 0).all()
     assert fit.y_impute.shape == (ITERS, data.n_missing)
     assert np.isfinite(fit.y_impute).all()
-    assert fit.new_y_post.shape == (ITERS, m, p)
+    assert nnone(fit.new_y_post).shape == (ITERS, m, p)
     assert fit.y_miss_accept.shape == (TOTAL_ITERS, data.n_missing)
     assert fit.y_miss_accept.dtype == bool
 
@@ -238,7 +240,7 @@ def test_signature_defaults_match_r() -> None:
     """
     rfuncname = 'missBART::missBART2'
     params = mapped_params(missBART.missBART2)
-    rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+    rnames = set(robjects_r(f'names(formals({rfuncname}))'))
     # R's `...` is forwarded by a **kwargs catch-all, not a named parameter
     assert ('...' in rnames) == has_var_keyword(missBART.missBART2)
     rnames -= {'...'}

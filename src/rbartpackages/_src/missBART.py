@@ -24,7 +24,7 @@
 
 """Implementation of `rbartpackages.missBART`."""
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 from jaxtyping import Bool, Float64, Shaped
@@ -354,10 +354,10 @@ class missBART2(RObjectBase):
         }
         super().__init__(**drop_none(kw))
 
-        self.MH_sd = self.MH_sd.item()
-        self.burn = int(self.burn.item())
-        self.iters = int(self.iters.item())
-        self.thin = int(self.thin.item())
+        self.MH_sd = cast(ndarray, self.MH_sd).item()
+        self.burn = int(cast(ndarray, self.burn).item())
+        self.iters = int(cast(ndarray, self.iters).item())
+        self.thin = int(cast(ndarray, self.thin).item())
 
         # NA-when-disabled fields come back as plain (NA-filled) ndarrays
         # instead of NamedLists; normalize to None.
@@ -369,14 +369,18 @@ class missBART2(RObjectBase):
         if isinstance(self.pdp_out, np.ndarray):
             self.pdp_out = None
 
-        self.y_post = np.stack(_values(self.y_post))
-        self.z_post = np.stack(_values(self.z_post))
-        self.omega_post = np.stack(_values(self.omega_post))
-        self.y_impute = np.stack(_values(self.y_impute))
-        self.var_imp = _values(self.var_imp)
-        self.y_pred = _values(self.y_pred)
+        self.y_post = np.stack(_values(cast(NamedList, self.y_post)))
+        self.z_post = np.stack(_values(cast(NamedList, self.z_post)))
+        self.omega_post = np.stack(_values(cast(NamedList, self.omega_post)))
+        self.y_impute = np.stack(_values(cast(NamedList, self.y_impute)))
+        self.var_imp = _values(cast(NamedList, self.var_imp))
+        self.y_pred = _values(cast(NamedList, self.y_pred))
 
-        self.reg_trees = [_values(it) for it in _values(self.reg_trees)]
-        self.class_trees = [_values(it) for it in _values(self.class_trees)]
-        self.reg_mu = [_values(it) for it in _values(self.reg_mu)]
-        self.class_mu = [_values(it) for it in _values(self.class_mu)]
+        self.reg_trees = [
+            _values(it) for it in _values(cast(NamedList, self.reg_trees))
+        ]
+        self.class_trees = [
+            _values(it) for it in _values(cast(NamedList, self.class_trees))
+        ]
+        self.reg_mu = [_values(it) for it in _values(cast(NamedList, self.reg_mu))]
+        self.class_mu = [_values(it) for it in _values(cast(NamedList, self.class_mu))]

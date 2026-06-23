@@ -24,11 +24,11 @@
 
 """Functions intended to be shared across the test suite."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Set
 from dataclasses import dataclass
 from inspect import Parameter, signature
 from operator import ge, le
-from typing import Any
+from typing import Any, Literal, TypeAlias, TypeVar
 
 import numpy as np
 from jaxtyping import Float64
@@ -36,7 +36,26 @@ from numpy import ndarray
 from numpy.linalg import norm
 from numpy.testing import assert_allclose as _np_assert_allclose  # noqa: TID251
 from numpy.testing import assert_array_equal as _np_assert_array_equal  # noqa: TID251
-from numpy.typing import ArrayLike
+from numpy.typing import ArrayLike, NDArray
+
+# Annotation for a keyword-argument dict forwarded via `**`: a bare `dict` leaves
+# the values untyped, so unpacking it into a typed call does not make the checker
+# flag every forwarded argument.
+kwdict: TypeAlias = dict
+
+# Numeric input accepted by `numpy.testing.assert_allclose`: numeric scalars
+# (Python or numpy) and numeric arrays. Narrower than `ArrayLike`, which also
+# admits the string/object arrays that `assert_allclose` rejects. `complex`
+# covers Python `int`/`float`/`complex` via the numeric tower.
+NumericArrayLike: TypeAlias = complex | np.number | NDArray[np.number]
+
+_T = TypeVar('_T')
+
+
+def nnone(x: _T | None) -> _T:
+    """Assert `x` is not ``None`` and return it, narrowing away the ``None``."""
+    assert x is not None
+    return x
 
 
 def assert_close_matrices(
@@ -47,7 +66,7 @@ def assert_close_matrices(
     atol: float = 0.0,
     tozero: bool = False,
     negate: bool = False,
-    ord: int | float | str | None = 2,  # noqa: A002
+    ord: int | float | Literal['fro', 'nuc'] | None = 2,  # noqa: A002
     err_msg: str = '',
     reduce_rank: bool = False,
 ) -> None:
@@ -147,8 +166,8 @@ def assert_different_matrices(*args: ArrayLike, **kwargs: Any) -> None:
 
 
 def assert_allclose(
-    actual: ArrayLike,
-    desired: ArrayLike,
+    actual: NumericArrayLike,
+    desired: NumericArrayLike,
     *,
     rtol: float = 0.0,
     atol: float = 0.0,
@@ -223,9 +242,10 @@ def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
     Defaults that are NULL, missing, or that cannot be evaluated standalone
     (e.g. because they reference other arguments) are omitted.
     """
-    from rpy2 import robjects  # noqa: PLC0415, deferred to keep R optional
+    # deferred to keep R optional
+    from rbartpackages._src.base import robjects_r  # noqa: PLC0415
 
-    rdefaults = robjects.r(f"""
+    rdefaults = robjects_r(f"""
         Filter(
             Negate(is.null),
             lapply(
@@ -241,7 +261,7 @@ def evaluated_r_formals(rfuncname: str) -> dict[str, ndarray]:
 
 
 def mapped_params(
-    obj: Callable, *, skip: set[str] = frozenset(), dots: bool = False
+    obj: Callable, *, skip: Set[str] = frozenset(), dots: bool = False
 ) -> dict[str, Parameter]:
     """Return the named parameters of `obj`, keyed by R name.
 

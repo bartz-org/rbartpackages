@@ -34,22 +34,25 @@ import math
 from dataclasses import dataclass
 from inspect import Parameter
 from types import ModuleType
+from typing import cast
 
 import numpy as np
 import pandas as pd
 import pytest
 from jaxtyping import Float64
 from numpy import ndarray
-from rpy2 import robjects
 from rpy2.rinterface_lib.embedded import RRuntimeError
 
 from rbartpackages import BART, BART3
+from rbartpackages._src.base import robjects_r
 from tests.util import (
     RegressionData,
     assert_array_equal,
     assert_close_matrices,
     evaluated_r_formals,
+    kwdict,
     mapped_params,
+    nnone,
     regression_arrays,
 )
 
@@ -144,6 +147,7 @@ def check_predict(
         expected_keys = ['binaryOffset', 'prob_test', 'prob_test_mean', 'yhat_test']
         if isinstance(bart, BART3.gbart):
             # BART3 adds the prob.test.lower/upper quantiles to the output
+            pred = cast(BART3.PredictBinary, pred)
             expected_keys += ['prob_test_lower', 'prob_test_upper']
             assert np.all(pred['prob_test_lower'] <= pred['prob_test_upper'])
         assert sorted(pred) == sorted(expected_keys)
@@ -151,10 +155,13 @@ def check_predict(
         assert pred['prob_test'].shape == (NDPOST, m)
         assert pred['prob_test_mean'].shape == (m,)
         assert isinstance(pred['binaryOffset'], float)
-        assert_close_matrices(pred['prob_test_mean'], bart.prob_test_mean, rtol=1e-5)
+        assert_close_matrices(
+            pred['prob_test_mean'], nnone(bart.prob_test_mean), rtol=1e-5
+        )
     else:
+        assert isinstance(pred, np.ndarray)
         assert pred.shape == (NDPOST, m)
-        assert_close_matrices(pred.mean(axis=0), bart.yhat_test_mean, rtol=1e-5)
+        assert_close_matrices(pred.mean(axis=0), nnone(bart.yhat_test_mean), rtol=1e-5)
 
 
 @pytest.mark.parametrize('const', [False, True], ids=['no-const', 'const'])
@@ -173,7 +180,8 @@ def test_gbart(pkg: ModuleType, data: Data, binary: bool, const: bool) -> None:
     m, _ = data.x_test.shape
     x_train = data.x_const if const else data.x
     x_test = data.x_test_const if const else data.x_test
-    kw = dict() if pkg is BART3 else dict(hostname=True)  # BART3 dropped hostname
+    # BART3 dropped hostname
+    kw: kwdict = dict() if pkg is BART3 else dict(hostname=True)
     bart = pkg.gbart(
         x_train=x_train,
         y_train=data.biny if binary else data.y,
@@ -241,7 +249,7 @@ def test_explicit_signature(pkg: ModuleType, data: Data) -> None:
     extra of the other) are rejected instead of being forwarded to R.
     """
     offset = 1.5
-    common = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST)
+    common: kwdict = dict(ntree=NTREE, nskip=NSKIP, ndpost=NDPOST)
     bart = pkg.gbart(data.x, data.y, data.x_test, offset=offset, **common)
     assert bart.offset == offset
 
@@ -251,7 +259,7 @@ def test_explicit_signature(pkg: ModuleType, data: Data) -> None:
         with pytest.raises(RRuntimeError, match='must be of a vector type'):
             pkg.gbart(data.x, data.y, lambda_=0.0, sigest=1.0, **common)
         with pytest.raises(TypeError, match='unexpected keyword'):
-            pkg.gbart(data.x, data.y, probs=(0.25, 0.75))  # BART3 extra
+            pkg.gbart(data.x, data.y, probs=(0.25, 0.75))  # ty: ignore[unknown-argument] # BART3 extra
     else:
         probs = 0.25, 0.75
         bart = pkg.gbart(
@@ -345,7 +353,7 @@ def test_signature_defaults_match_r(pkg: ModuleType) -> None:
         rfuncname = cls._rfuncname
         # the signatures use _ where R uses . and trail it to dodge python keywords
         params = mapped_params(cls, dots=True)
-        rnames = set(robjects.r(f'names(formals({rfuncname}))'))
+        rnames = set(robjects_r(f'names(formals({rfuncname}))'))
         assert params.keys() <= rnames, rfuncname
         assert rnames - params.keys() == unexposed, rfuncname
 
@@ -386,9 +394,9 @@ def test_predict_signature_matches_r(pkg: ModuleType) -> None:
     rnames = set()
     for type_ in ('wbart', 'pbart', 'lbart'):
         method = f'getS3method("predict", "{type_}", envir = asNamespace("{library}"))'
-        rnames |= set(robjects.r(f'names(formals({method}))'))
+        rnames |= set(robjects_r(f'names(formals({method}))'))
     for worker in ('pwbart', 'mc.pwbart'):
-        rnames |= set(robjects.r(f'names(formals({library}:::{worker}))'))
+        rnames |= set(robjects_r(f'names(formals({library}:::{worker}))'))
     # drop what never crosses the wrapper: the dispatch arguments the wrapper
     # binds itself (object, newdata) and the worker arguments the methods fill
     # with the fit's own data (x.test, treedraws)
