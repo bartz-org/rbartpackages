@@ -30,6 +30,15 @@ SOFTWARE.
 
 # Changelog
 
+## 0.2.0 Baruch's Algorithm for Recursive Trainspotting (2026-06-25)
+
+- new wrapper module for `missBART`, wrapping `missBART2`
+- additional wrapped objects in existing modules:
+    - `bartMachine`: `bart_machine_get_posterior`, `get_sigsqs`, `bart_machine_num_cores`, `set_bart_machine_num_cores`, `Posterior`
+    - `dbarts`: `dbartsData`, `RunSamples`
+- explicit Python signatures and docstrings in all wrappers
+- make `rbartpackages.base` public to help users write their own wrappers quickly
+- the package is now fully typed
 
 ## 0.1.0 Butterjit Advanced Retrieval Trainchoke (2026-06-05)
 
