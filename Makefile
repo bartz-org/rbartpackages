@@ -27,10 +27,17 @@
 # define command to run python
 UV_RUN = uv run --dev
 
+# Authenticate renv's GitHub remote resolution (BART3, missBART). renv reads
+# GITHUB_PAT from the environment; this prefix sets it for a single command,
+# honoring an existing GITHUB_PAT and otherwise falling back to the gh CLI's
+# token (empty when gh is absent/unauthed, i.e. same as no auth). Prefix only
+# the renv commands, so unrelated targets don't shell out to gh.
+WITH_GITHUB_PAT = GITHUB_PAT="$${GITHUB_PAT:-$$(gh auth token 2>/dev/null)}"
+
 # define command to run python with oldest supported dependencies
 # OLD_DATE / OLD_DELAY_DAYS / BUMP_PYTHON_VERSION_DATE / NUM_SUPPORTED_PYTHON_RELEASES
 # drive the `update-oldest-deps` policy.
-OLD_DATE = 2025-06-05
+OLD_DATE = 2025-06-25
 OLD_DELAY_DAYS = 365
 BUMP_PYTHON_VERSION_DATE = 10-31
 NUM_SUPPORTED_PYTHON_RELEASES = 5
@@ -86,7 +93,7 @@ help:
 # bartMachine needs a working Java toolchain (rJava) at R-package install time.
 .PHONY: setup
 setup:
-	Rscript -e "renv::restore()"
+	$(WITH_GITHUB_PAT) Rscript -e "renv::restore()"
 	$(UV_RUN) pre-commit install --install-hooks
 	$(UV_RUN) python -c 'import rbartpackages; print(rbartpackages.__version__)'
 
@@ -158,7 +165,7 @@ docs-latest:
 	WORKTREE_DIR=$$(mktemp -d) && \
 	trap "git worktree remove --force '$$WORKTREE_DIR' 2>/dev/null || rm -rf '$$WORKTREE_DIR'" EXIT && \
 	git worktree add --detach "$$WORKTREE_DIR" "$$LATEST_TAG" && \
-	( cd "$$WORKTREE_DIR" && Rscript -e "renv::restore()" ) && \
+	( cd "$$WORKTREE_DIR" && $(WITH_GITHUB_PAT) Rscript -e "renv::restore()" ) && \
 	$(MAKE) -C "$$WORKTREE_DIR" docs && \
 	test ! -d _site/docs || rm -r _site/docs && \
 	mv "$$WORKTREE_DIR/_site/docs-dev" _site/docs
@@ -203,7 +210,7 @@ update-deps:
 	uv lock --upgrade
 	# Update R packages to their latest versions and rewrite renv.lock; snapshot
 	# captures the refreshed library (explicit type, from DESCRIPTION).
-	Rscript -e "renv::update(prompt = FALSE); renv::snapshot(prompt = FALSE)"
+	$(WITH_GITHUB_PAT) Rscript -e "renv::update(prompt = FALSE); renv::snapshot(prompt = FALSE)"
 	# --freeze keeps revs pinned to commit SHAs (tags are mutable)
 	$(UV_RUN) pre-commit autoupdate --freeze
 

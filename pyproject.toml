@@ -36,7 +36,7 @@ license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "rpy2>=3.6.0",
+    "rpy2>=3.6.1",
     "numpy>=2.2.6",
     "jaxtyping>=0.3.2",
     # WORKAROUND(python<3.11): backports NotRequired and Self
@@ -45,9 +45,9 @@ dependencies = [
 
 [project.optional-dependencies]
 # Each extra backs a soft-imported converter in `rbartpackages.base`.
-jax = ["jax>=0.6.1"]
-pandas = ["pandas>=2.2.3"]
-polars = ["polars>=1.30.0", "pandas>=2.2.3"]
+jax = ["jax>=0.6.2"]
+pandas = ["pandas>=2.3.0"]
+polars = ["polars>=1.31.0", "pandas>=2.3.0"]
 
 [project.urls]
 Homepage = "https://github.com/bartz-org/rbartpackages"
@@ -81,10 +81,10 @@ dev = [
     "asv>=0.6.4",
     "gitpython>=3.1.44",
     "packaging>=25.0",
-    "pytest>=8.4.0",
-    "pytest-cov>=6.1.1",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
     # WORKAROUND(pytest<9): pytest 9 has built-in subtests support
-    "pytest-subtests>=0.14.1",
+    "pytest-subtests>=0.14.2",
     "pytest-timeout>=2.4.0",
     "pytest-xdist>=3.7.0",
     "sphinx>=8.1.3",
@@ -92,7 +92,7 @@ dev = [
     "tomli>=2.2.1",
     "myst-nb>=1.2.0",
     "jupyterlab>=4.4.3",
-    "diff-cover>=9.3.2",
+    "diff-cover>=9.4.1",
     # the floor satisfies the OLD_DATE policy; lint (and hence ty) only ever
     # runs on the latest toolchain, so the old version is installed but unused
     "ty>=0.0.1a7",
@@ -101,8 +101,8 @@ dev = [
     # where actionlint finds it; absent it, actionlint silently skips shellcheck.
     "shellcheck-py>=0.10.0.1",
     # the soft-imported converters, so they are exercised by the test suite
-    "jax>=0.6.1",
-    "polars[pandas,pyarrow]>=1.30.0",
+    "jax>=0.6.2",
+    "polars[pandas,pyarrow]>=1.31.0",
 ]
 
 # WORKAROUND(pytest<9): use [tool.pytest]
