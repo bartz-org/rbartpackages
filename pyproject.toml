@@ -47,7 +47,7 @@ dependencies = [
 # Each extra backs a soft-imported converter in `rbartpackages.base`.
 jax = ["jax>=0.6.2"]
 pandas = ["pandas>=2.3.0"]
-polars = ["polars>=1.31.0", "pandas>=2.2.3"]
+polars = ["polars>=1.31.0", "pandas>=2.3.0"]
 
 [project.urls]
 Homepage = "https://github.com/bartz-org/rbartpackages"
@@ -101,7 +101,7 @@ dev = [
     # where actionlint finds it; absent it, actionlint silently skips shellcheck.
     "shellcheck-py>=0.10.0.1",
     # the soft-imported converters, so they are exercised by the test suite
-    "jax>=0.6.1",
+    "jax>=0.6.2",
     "polars[pandas,pyarrow]>=1.31.0",
 ]
 

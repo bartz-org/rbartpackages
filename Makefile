@@ -27,6 +27,12 @@
 # define command to run python
 UV_RUN = uv run --dev
 
+# Authenticate renv's GitHub remote resolution (BART3, missBART). renv reads
+# GITHUB_PAT from the environment; honor an existing one, else fall back to the
+# gh CLI's token. Empty when gh is absent/unauthed, i.e. same as no auth.
+GITHUB_PAT ?= $(shell gh auth token 2>/dev/null)
+export GITHUB_PAT
+
 # define command to run python with oldest supported dependencies
 # OLD_DATE / OLD_DELAY_DAYS / BUMP_PYTHON_VERSION_DATE / NUM_SUPPORTED_PYTHON_RELEASES
 # drive the `update-oldest-deps` policy.
