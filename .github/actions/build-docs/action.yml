@@ -1,0 +1,109 @@
+# rbartpackages/.github/actions/build-docs/action.yml
+#
+# Copyright (c) 2026, The rbartpackages Contributors
+#
+# This file is part of rbartpackages.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Build documentation
+description: >-
+  Build the HTML docs (latest release + development) and benchmarks, and upload
+  them as the `docs` artifact. The repository must already be checked out with
+  full history (fetch-depth 0) so hatch-vcs and `docs-latest` see the tags.
+
+runs:
+  using: composite
+  steps:
+    - name: Ensure main branch exists (for asv publish)
+      shell: bash
+      run: |
+        git branch main origin/main || true
+        git branch --set-upstream-to=origin/main main || true
+
+    - name: Install uv
+      uses: ./.github/actions/setup-uv
+
+    - name: Install Java (needed by the R package bartMachine via rJava)
+      uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654 # v5.2.0
+      with:
+        distribution: temurin
+        # bartMachine 1.4.2 ships jars compiled for Java 21 (class file
+        # version 65); an older JRE fails with UnsupportedClassVersionError.
+        java-version: "21"
+
+    - name: Install R
+      uses: r-lib/actions/setup-r@a51a8012b0aab7c32ef9d19bf54da93f3254335e # v2
+      with:
+        r-version: "renv"
+
+    - name: Make R aware of Java (for rJava)
+      shell: bash
+      run: sudo R CMD javareconf
+
+    - name: Add a CRAN fallback mirror for renv
+      # setup-r points renv at Posit Package Manager (PPM) alone, via a
+      # single-URL RENV_CONFIG_REPOS_OVERRIDE. PPM intermittently times out,
+      # which hard-fails the renv bootstrap/restore below and forces a manual
+      # CI re-run. Append a plain CRAN mirror so renv falls back to it (source
+      # builds, only when PPM is unreachable). $RSPM is the PPM binary URL
+      # just exported by setup-r, so the runner's distro codename stays in sync.
+      shell: bash
+      run: echo "RENV_CONFIG_REPOS_OVERRIDE=PPM=${RSPM};CRAN=https://cloud.r-project.org" >> "$GITHUB_ENV"
+
+    - name: Install R dependencies
+      uses: r-lib/actions/setup-renv@a51a8012b0aab7c32ef9d19bf54da93f3254335e # v2
+      env:
+        GITHUB_PAT: ${{ github.token }}
+
+    - name: Configure R PATHS for rpy2
+      shell: bash
+      run: |
+        # rpy2 embeds libR directly, so R's own `etc/ldpaths` (which adds the
+        # JVM dir to the loader path) never runs; rJava then can't find
+        # libjvm.so when bartMachine loads its namespace. Put it on the path
+        # explicitly. $JAVA_HOME is exported by the setup-java step above.
+        echo "R_HOME=$(R RHOME)" >> "$GITHUB_ENV"
+        echo "LD_LIBRARY_PATH=$(R RHOME)/lib:${JAVA_HOME}/lib/server${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+
+    - name: Generate benchmarks visualization
+      # asv-discover writes benchmarks.json so `asv publish` has a target even
+      # with no committed results (e.g. this fresh repo); once benchmark runs
+      # are committed it renders those too.
+      shell: bash
+      run: RPY2_CFFI_MODE=ABI make asv-discover asv-publish
+
+    - name: Generate documentation
+      shell: bash
+      run: RPY2_CFFI_MODE=ABI make docs docs-latest
+      env:
+        # docs-latest runs its own `renv::restore()` in the release worktree;
+        # without a token its GitHub API calls (resolving `Remotes:` refs)
+        # are unauthenticated and flakily rate-limited on shared runners.
+        GITHUB_PAT: ${{ github.token }}
+
+    - name: Save documentation
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      with:
+        name: docs
+        path: |
+          _site/docs
+          _site/docs-dev
+          _site/benchmarks
+        if-no-files-found: error
