@@ -112,6 +112,7 @@ clean:
 	rm -fr .venv
 	rm -fr dist
 	rm -fr docs/_build
+	rm -fr docs/reference/_autogen
 	rm -fr .coverage* coverage.xml diffcov.md
 	# `renv::clean()` only removes locks/tempdirs/unused packages, not the
 	# whole library, so wipe the gitignored renv subdirs by hand to mirror
@@ -155,6 +156,8 @@ tests-old:
 
 .PHONY: docs
 docs:
+	# wipe autosummary stubs so removed symbols don't linger as stale pages
+	rm -fr docs/reference/_autogen
 	$(UV_RUN) make -C docs html
 	test ! -d _site/docs-dev || rm -r _site/docs-dev
 	mv docs/_build/html _site/docs-dev
