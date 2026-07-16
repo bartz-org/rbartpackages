@@ -2327,11 +2327,11 @@
     },
     "pan": {
       "Package": "pan",
-      "Version": "1.9",
+      "Version": "2.0",
       "Source": "Repository",
-      "Date": "2023-8-19",
+      "Date": "2026-06-30",
       "Title": "Multiple Imputation for Multivariate Panel or Clustered Data",
-      "Author": "Original by Joseph L. Schafer",
+      "Authors@R": "c(person(given = c(\"Original\", \"by\", \"Joseph\", \"L.\"), family = \"Schafer\", role = \"aut\"), person(given = c(\"Jing\", \"hua\"), family = \"Zhao\", role = \"cre\", email = \"jinghuazhao@hotmail.com\"))",
       "Maintainer": "Jing hua Zhao <jinghuazhao@hotmail.com>",
       "Suggests": [
         "mitools",
@@ -2342,10 +2342,9 @@
       "Description": "It provides functions and examples for maximum likelihood estimation for generalized linear mixed models and Gibbs sampler for multivariate linear mixed models with incomplete data, as described in Schafer JL (1997) \"Imputation of missing covariates under a multivariate linear mixed model\". Technical report 97-04, Dept. of Statistics, The Pennsylvania State University.",
       "License": "GPL-3",
       "NeedsCompilation": "yes",
+      "Author": "Original by Joseph L. Schafer [aut], Jing hua Zhao [cre]",
       "Repository": "CRAN",
-      "Depends": [
-        "R (>= 2.10)"
-      ]
+      "Encoding": "UTF-8"
     },
     "pillar": {
       "Package": "pillar",
