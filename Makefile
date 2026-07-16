@@ -24,6 +24,11 @@
 
 # Makefile for running tests, prepare and upload a release.
 
+# Refuse -j: recipes manage their own parallelism (pytest-xdist, asv) and the
+# release pipeline relies on serial prerequisite order (e.g. build before
+# check-dist). Global because GNU make <4.4 can't scope .NOTPARALLEL to a target.
+.NOTPARALLEL:
+
 # define command to run python
 UV_RUN = uv run --dev
 
@@ -60,6 +65,7 @@ help:
 	@echo "- check-committed: verify there are no uncommitted changes"
 	@echo "- check-changelog: verify the topmost changelog section is dated today"
 	@echo "- build: build the python wheel and sdist"
+	@echo "- check-dist: verify dist/ artifacts carry the release version"
 	@echo "- release: run tests, build, and upload to PyPI (run on main)"
 	@echo "- version-tag: create local git tag for the topmost changelog version"
 	@echo "- push-tag: push the version tag to origin"
@@ -239,8 +245,9 @@ build:
 	uv build
 
 # The version is derived from the git tag at build time (hatch-vcs), so the
-# tag must exist before `build`. It is created locally first and pushed only
-# after the build artifacts pass `smoke-test`, to avoid editing a published
+# tag must exist before `build` (`check-dist` verifies this on the
+# artifacts). It is created locally first and pushed only after the build
+# artifacts pass `check-dist` and `smoke-test`, to avoid editing a published
 # tag if something fails in between.
 .PHONY: release
 release: check-changelog clean setup update-oldest-deps update-deps check-committed tests tests-old docs version-tag build upload gh-release
@@ -261,8 +268,19 @@ version-tag: check-committed
 	fi
 
 .PHONY: push-tag
-push-tag: version-tag
+push-tag: version-tag check-dist smoke-test
 	git push origin $(VERSION_TAG)
+
+# Untagged builds carry a +g<commit> local version segment, which PyPI and
+# TestPyPI reject; this catches dist/ built before tagging, or gone stale.
+.PHONY: check-dist
+check-dist:
+	@VERSION=$$($(UV_RUN) python config/util.py get_version) && \
+	test -e "dist/rbartpackages-$$VERSION.tar.gz" && test -e "dist/rbartpackages-$$VERSION-py3-none-any.whl" || { \
+		echo "dist/ does not carry the release version $$VERSION:"; \
+		ls dist/ 2>/dev/null; \
+		echo "build with the tag in place: make version-tag build"; \
+		exit 1; }
 
 .PHONY: smoke-test
 smoke-test:
@@ -270,7 +288,7 @@ smoke-test:
 	uv run --isolated --no-project --with dist/*.tar.gz python -c 'import rbartpackages'
 
 .PHONY: upload
-upload: smoke-test push-tag
+upload: push-tag
 	@echo "Enter PyPI token:"
 	@read -s UV_PUBLISH_TOKEN && \
 	export UV_PUBLISH_TOKEN && \
@@ -279,11 +297,9 @@ upload: smoke-test push-tag
 	echo "Try to install rbartpackages $$VERSION from PyPI" && \
 	uv tool run --exclude-newer-package="rbartpackages=0 days" --with="rbartpackages==$$VERSION" python -c 'import rbartpackages; print(rbartpackages.__version__)'
 
-# The tag (created locally by version-tag) must exist before the artifacts in
-# dist/ are built: untagged builds carry a +g<commit> local version segment,
-# which TestPyPI rejects.
+# Like `upload`, but the tag stays local: TestPyPI uploads are rehearsals.
 .PHONY: upload-test
-upload-test: smoke-test version-tag
+upload-test: version-tag check-dist smoke-test
 	@echo "Enter TestPyPI token:"
 	@read -s UV_PUBLISH_TOKEN && \
 	export UV_PUBLISH_TOKEN && \
