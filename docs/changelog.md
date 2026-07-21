@@ -30,6 +30,12 @@ SOFTWARE.
 
 # Changelog
 
+
+## 0.2.1 TBD (2026-07-21)
+
+Update deps and fix problems.
+
+
 ## 0.2.0 Baruch's Algorithm for Recursive Trainspotting (2026-06-25)
 
 - new wrapper module for `missBART`, wrapping `missBART2`

@@ -123,7 +123,7 @@ def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
         assert_close_matrices(draws, phi(nnone(bart.yhat_train)), rtol=1e-7)
     else:
         assert_array_equal(draws, nnone(bart.yhat_train))
-    assert_close_matrices(bart.fitted(), draws.mean(axis=0), rtol=1e-7)
+    assert_close_matrices(bart.fitted(), np.mean(draws, axis=0), rtol=1e-7)
 
     trees = bart.extract(type='trees')
     # the tree structure comes back as a dataframe (polars if installed, else

@@ -40,14 +40,14 @@ dependencies = [
     "numpy>=2.2.6",
     "jaxtyping>=0.3.2",
     # WORKAROUND(python<3.11): backports NotRequired and Self
-    "typing-extensions>=4.14.0",
+    "typing-extensions>=4.14.1",
 ]
 
 [project.optional-dependencies]
 # Each extra backs a soft-imported converter in `rbartpackages.base`.
 jax = ["jax>=0.6.2"]
-pandas = ["pandas>=2.3.0"]
-polars = ["polars>=1.31.0", "pandas>=2.3.0"]
+pandas = ["pandas>=2.3.1"]
+polars = ["polars>=1.31.0", "pandas>=2.3.1"]
 
 [project.urls]
 Homepage = "https://github.com/bartz-org/rbartpackages"
@@ -86,13 +86,13 @@ dev = [
     # WORKAROUND(pytest<9): pytest 9 has built-in subtests support
     "pytest-subtests>=0.14.2",
     "pytest-timeout>=2.4.0",
-    "pytest-xdist>=3.7.0",
+    "pytest-xdist>=3.8.0",
     "sphinx>=8.1.3",
     "sphinx-autodoc-typehints>=3.0.1",
     "tomli>=2.2.1",
-    "myst-nb>=1.2.0",
-    "jupyterlab>=4.4.3",
-    "diff-cover>=9.4.1",
+    "myst-nb>=1.3.0",
+    "jupyterlab>=4.4.5",
+    "diff-cover>=9.6.0",
     # the floor satisfies the OLD_DATE policy; lint (and hence ty) only ever
     # runs on the latest toolchain, so the old version is installed but unused
     "ty>=0.0.1a7",
