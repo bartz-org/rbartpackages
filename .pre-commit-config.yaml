@@ -45,13 +45,13 @@ repos:
         # an explicit `pre-commit run --files`
         exclude: src/rbartpackages/_version\.py$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: 745be0411e3c150e246d527e531e5a221b8c3462  # frozen: v0.15.19
+    rev: 2700fd5671c633760d912769c041bfcde2b9a01b  # frozen: v0.15.22
     hooks:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
   - repo: https://github.com/DanielNoord/pydocstringformatter
-    rev: d5190a85272ddf6a3d14bfd88ab327f84aa2a0a7 # frozen: v0.7.5
+    rev: b658f517409a0864b20fa9d9aa3d178a37fb7f22  # frozen: v1.0.0
     hooks:
       - id: pydocstringformatter
         # config in [tool.pydocstringformatter] (pyproject.toml); the hook
@@ -59,10 +59,14 @@ repos:
         # attribute-docstring conventions this enforces; drop `files` to widen.
         files: ^src/rbartpackages/.*\.py$
   - repo: https://github.com/jsh9/pydoclint
-    rev: c30c32235c50af51cbbaffcb5dda042ba792f896  # frozen: 0.8.7
+    rev: cf8f4d0b81f933ebc5414acadcf7acdab705baa1  # frozen: 0.9.1
     hooks:
       - id: pydoclint
   - repo: https://github.com/henryiii/validate-pyproject-schema-store
+    # pinned (see PRECOMMIT_PINNED in Makefile): as of 2026.07.20 the uv schema
+    # makes validate-pyproject's generated validator crash (UnboundLocalError:
+    # data_keys). Unpin once a newer rev passes `make lint ARGS='validate-pyproject
+    # --all-files'`.
     rev: de7f2ddf3f15a92f3e6a47dd709c68d9bdb04135  # frozen: 2026.06.25
     hooks:
       - id: validate-pyproject
@@ -71,7 +75,7 @@ repos:
     hooks:
       - id: gitlint # this is already defined to run in stage commit-msg
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 73c2d77a42a113aee9e4b748c24937f09557b82d  # frozen: 0.11.24
+    rev: 36bed8143874b34d77931e1236de048cf551e940  # frozen: 0.11.30
     hooks:
       - id: uv-lock
   - repo: https://github.com/rhysd/actionlint
