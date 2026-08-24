@@ -158,8 +158,10 @@ class Series(Protocol):
     with categoricals becoming factors.
     """
 
-    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
-        """Export as an Arrow PyCapsule stream."""
+    # WORKAROUND(pandas<3): unlike `DataFrame`, this protocol cannot require
+    # `__arrow_c_stream__`, which `pandas.Series` only grew in pandas 3; add it
+    # when the floor gets there. `dtype` plus `to_numpy` already exclude the
+    # other array types the wrappers accept.
 
     @property
     def dtype(self) -> object:

@@ -63,6 +63,8 @@ def floors_from_pyproject(path: Path) -> dict[str, Version]:
     data = tomli.loads(path.read_text())
     project = data.get('project', {})
     reqs: list[str] = list(project.get('dependencies', []))
+    for extra in project.get('optional-dependencies', {}).values():
+        reqs.extend(extra)
     for group in data.get('dependency-groups', {}).values():
         reqs.extend(group)
     floors: dict[str, Version] = {}
