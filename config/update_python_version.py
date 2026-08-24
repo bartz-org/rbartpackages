@@ -61,6 +61,15 @@ def parse_bump_date(s: str) -> tuple[int, int]:
     return month, day
 
 
+def parse_datetime(s: str) -> datetime.datetime:
+    """Parse an RFC 3339 timestamp, requiring an explicit timezone offset."""
+    dt = datetime.datetime.fromisoformat(s.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        msg = f'timestamp {s!r} must include a timezone offset'
+        raise argparse.ArgumentTypeError(msg)
+    return dt
+
+
 def compute_latest_minor(
     today: datetime.date, bump: tuple[int, int], anchor_year: int, anchor_latest: int
 ) -> int:
@@ -135,10 +144,17 @@ def main() -> int:
     parser.add_argument(
         '--python-version-file', type=Path, default=Path('.python-version')
     )
+    parser.add_argument(
+        '--today',
+        required=True,
+        type=parse_datetime,
+        help='RFC 3339 timestamp (with timezone); reference instant for the policy.',
+    )
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
 
-    today = datetime.datetime.now(tz=datetime.timezone.utc).date()
+    # the bump date is a UTC calendar day, so resolve the instant in UTC
+    today = args.today.astimezone(datetime.timezone.utc).date()
     latest_minor = compute_latest_minor(
         today, args.bump_date, ANCHOR_YEAR, ANCHOR_LATEST_MINOR
     )
