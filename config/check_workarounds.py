@@ -53,6 +53,9 @@ from refs_for_asv import oldest_benchmarked_version
 CANDIDATE_RE = re.compile(r'WORKAROUND\(([^)]*)\)')
 # Strict grammar applied to the inner contents.
 INNER_RE = re.compile(r'\s*([A-Za-z0-9_.\-]+)\s*(<=|<)\s*(\S+)\s*')
+# The uv version, in the `# frozen: <version>` comment on the rev line right
+# below the uv-pre-commit repo line; also the uv installed by CI.
+UV_REV_RE = re.compile(r'astral-sh/uv-pre-commit\s*\n.*#\s*frozen:\s*v?(\S+)')
 
 
 def floors_from_pyproject(path: Path) -> dict[str, Version]:
@@ -122,12 +125,17 @@ def scan(root: Path) -> list[tuple[str, str, str]]:
 
 
 def uv_floor(root: Path) -> Version:
-    """Return the uv version pinned in CI, the oldest uv we support."""
-    return Version((root / '.github' / '.uv-version').read_text().strip())
+    """Return the uv version pinned by pre-commit, the only uv we support."""
+    text = (root / '.pre-commit-config.yaml').read_text()
+    match = UV_REV_RE.search(text)
+    if match is None:
+        msg = 'cannot find the frozen uv-pre-commit rev in .pre-commit-config.yaml'
+        raise ValueError(msg)
+    return Version(match[1])
 
 
 def collect_floors(root: Path) -> dict[str, Version]:
-    """Floors for dependencies (pyproject.toml), `rbartpackages` (oldest ASV tag), `uv` (CI pin)."""
+    """Floors for dependencies (pyproject.toml), `rbartpackages` (oldest ASV tag), `uv` (pre-commit pin)."""
     floors = floors_from_pyproject(root / 'pyproject.toml')
     # No benchmarked version tags yet (e.g. before the first release) leaves the
     # `rbartpackages` self-floor simply unavailable.
