@@ -63,17 +63,18 @@ repos:
     hooks:
       - id: pydoclint
   - repo: https://github.com/henryiii/validate-pyproject-schema-store
-    # pinned (see PRECOMMIT_PINNED in Makefile): as of 2026.07.20 the uv schema
-    # makes validate-pyproject's generated validator crash (UnboundLocalError:
-    # data_keys). Unpin once a newer rev passes `make lint ARGS='validate-pyproject
-    # --all-files'`.
-    rev: de7f2ddf3f15a92f3e6a47dd709c68d9bdb04135  # frozen: 2026.06.25
+    rev: a011ac2729a668fd92c470a44476f340ad234404  # frozen: 2026.08.15
     hooks:
       - id: validate-pyproject
   - repo: https://github.com/jorisroovers/gitlint
     rev: acc9d9de6369b76d22cb4167029d2035e8730b98 # frozen: v0.19.1
     hooks:
       - id: gitlint # this is already defined to run in stage commit-msg
+  # this rev is the single uv pin: .github/actions/setup-uv installs the version
+  # in its `frozen` comment in every workflow, and config/check_workarounds.py
+  # reads it as the oldest supported uv, so the uv that writes uv.lock here and
+  # the one that reads it on ci cannot drift apart. Both parse the comment on
+  # the line right below the repo, keep it there.
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: b84c4a0a90bd58c7d82ae8f0d4d5e77b1ddd3ce6  # frozen: 0.12.5
     hooks:
@@ -141,13 +142,14 @@ repos:
         # first line, so the match runs from the opening `"""` to the first newline
         # or the closing `"""` (whichever comes first), one-line and multi-line
         # docstrings alike. Matches an attribute assignment or annotation line (one
-        # not ending in `:`, i.e. not a def/class header) followed by a same-indent
+        # not ending in `:`, i.e. not a def/class header, possibly just a bare `)`
+        # closing a multi-line assignment) followed by a same-indent
         # `"""` whose first line holds a lone `:` (not `::`) outside any ``code``
         # span or :role:`target`, with real text after it (a colon at end of line
         # is harmless: napoleon then keeps it in the description). Reword to drop
         # the colon (a comma or semicolon renders the same).
         language: pygrep
-        entry: '^(?P<i>[ \t]+)\S[^\n]*[^\n:\s]\n(?P=i)"""(?:``[^`]*``|:[A-Za-z0-9_+.:-]+:`[^`\n]+`|`[^`\n]+`|(?!""")[^:`\n])*:(?!:)(?![A-Za-z0-9_+.:-]+:`)[ \t]*(?!""")\S'
+        entry: '^(?P<i>[ \t]+)\S(?:[^\n]*[^\n:\s])?\n(?P=i)"""(?:``[^`]*``|:[A-Za-z0-9_+.:-]+:`[^`\n]+`|`[^`\n]+`|(?!""")[^:`\n])*:(?!:)(?![A-Za-z0-9_+.:-]+:`)[ \t]*(?!""")\S'
         args: [--multiline]
         types: [python]
       - id: forbid-lam-lamda
