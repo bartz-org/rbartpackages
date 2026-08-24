@@ -36,7 +36,7 @@ license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "rpy2>=3.6.1",
+    "rpy2>=3.6.2",
     "numpy>=2.2.6",
     "jaxtyping>=0.3.2",
     # WORKAROUND(python<3.11): backports NotRequired and Self
@@ -46,8 +46,8 @@ dependencies = [
 [project.optional-dependencies]
 # Each extra backs a soft-imported converter in `rbartpackages.base`.
 jax = ["jax>=0.6.2"]
-pandas = ["pandas>=2.3.1"]
-polars = ["polars>=1.31.0", "pandas>=2.3.1"]
+pandas = ["pandas>=2.3.2"]
+polars = ["polars>=1.32.3", "pandas>=2.3.2"]
 
 [project.urls]
 Homepage = "https://github.com/bartz-org/rbartpackages"
@@ -75,11 +75,11 @@ only-include = ["src/rbartpackages"]
 [dependency-groups]
 dev = [
     "ipython>=8.37.0",
-    "pre-commit>=4.2.0",
-    "rich>=14.0.0",
-    "virtualenv>=20.31.2",
+    "pre-commit>=4.3.0",
+    "rich>=14.1.0",
+    "virtualenv>=20.34.0",
     "asv>=0.6.4",
-    "gitpython>=3.1.44",
+    "gitpython>=3.1.45",
     "packaging>=25.0",
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
@@ -91,7 +91,7 @@ dev = [
     "sphinx-autodoc-typehints>=3.0.1",
     "tomli>=2.2.1",
     "myst-nb>=1.3.0",
-    "jupyterlab>=4.4.5",
+    "jupyterlab>=4.4.6",
     "diff-cover>=9.6.0",
     # the floor satisfies the OLD_DATE policy; lint (and hence ty) only ever
     # runs on the latest toolchain, so the old version is installed but unused
@@ -99,10 +99,10 @@ dev = [
     # vendored shellcheck for the actionlint hook: pinned here so its presence
     # and version don't depend on a system install. `uv run` puts it on PATH,
     # where actionlint finds it; absent it, actionlint silently skips shellcheck.
-    "shellcheck-py>=0.10.0.1",
+    "shellcheck-py>=0.11.0.1",
     # the soft-imported converters, so they are exercised by the test suite
     "jax>=0.6.2",
-    "polars[pandas,pyarrow]>=1.31.0",
+    "polars[pandas,pyarrow]>=1.32.3",
 ]
 
 # WORKAROUND(pytest<9): use [tool.pytest]

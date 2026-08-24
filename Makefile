@@ -42,7 +42,7 @@ WITH_GITHUB_PAT = GITHUB_PAT="$${GITHUB_PAT:-$$(gh auth token 2>/dev/null)}"
 # define command to run python with oldest supported dependencies
 # OLD_DATE / OLD_DELAY_DAYS / BUMP_PYTHON_VERSION_DATE / NUM_SUPPORTED_PYTHON_RELEASES
 # drive the `update-oldest-deps` policy.
-OLD_DATE = 2025-07-21
+OLD_DATE = 2025-08-24
 OLD_DELAY_DAYS = 365
 BUMP_PYTHON_VERSION_DATE = 10-31
 NUM_SUPPORTED_PYTHON_RELEASES = 5
