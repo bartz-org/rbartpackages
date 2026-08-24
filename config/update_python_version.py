@@ -71,10 +71,7 @@ def parse_datetime(s: str) -> datetime.datetime:
 
 
 def compute_latest_minor(
-    today: datetime.datetime,
-    bump: tuple[int, int],
-    anchor_year: int,
-    anchor_latest: int,
+    today: datetime.date, bump: tuple[int, int], anchor_year: int, anchor_latest: int
 ) -> int:
     bumps = today.year - anchor_year
     if (today.month, today.day) >= bump:
@@ -156,7 +153,8 @@ def main() -> int:
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
 
-    today = args.today
+    # the bump date is a UTC calendar day, so resolve the instant in UTC
+    today = args.today.astimezone(datetime.timezone.utc).date()
     latest_minor = compute_latest_minor(
         today, args.bump_date, ANCHOR_YEAR, ANCHOR_LATEST_MINOR
     )
