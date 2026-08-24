@@ -59,16 +59,23 @@ REQUIREMENT_RE = re.compile(
 )
 
 
-def parse_date(s: str) -> datetime.date:
-    return (
-        datetime.datetime.strptime(s, '%Y-%m-%d')
-        .replace(tzinfo=datetime.timezone.utc)
-        .date()
-    )
+def parse_datetime(s: str) -> datetime.datetime:
+    """Parse an RFC 3339 timestamp, requiring an explicit timezone offset."""
+    dt = datetime.datetime.fromisoformat(s.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        msg = f'timestamp {s!r} must include a timezone offset'
+        raise argparse.ArgumentTypeError(msg)
+    return dt
 
 
-def compute_old_date(min_old_date: datetime.date, delay_days: int) -> datetime.date:
-    today = datetime.datetime.now(tz=datetime.timezone.utc).date()
+def format_utc(dt: datetime.datetime) -> str:
+    """Format an instant as an RFC 3339 UTC timestamp with a trailing `Z`."""
+    return dt.astimezone(datetime.timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def compute_old_date(
+    min_old_date: datetime.datetime, delay_days: int, today: datetime.datetime
+) -> datetime.datetime:
     return max(today - datetime.timedelta(days=delay_days), min_old_date)
 
 
@@ -160,7 +167,7 @@ def release_supports_python(files: list[dict], oldest_python: Version) -> bool:
 
 
 def latest_before(
-    name: str, cutoff: datetime.date, oldest_python: Version
+    name: str, cutoff: datetime.datetime, oldest_python: Version
 ) -> Version | None:
     """Return the latest final release of `name` matching the constraints.
 
@@ -168,9 +175,6 @@ def latest_before(
     support `oldest_python`.
     """
     data = fetch_pypi(name)
-    cutoff_dt = datetime.datetime.combine(
-        cutoff, datetime.time.min, tzinfo=datetime.timezone.utc
-    )
     candidates: list[Version] = []
     for vstr, files in data.get('releases', {}).items():
         try:
@@ -184,7 +188,7 @@ def latest_before(
         upload = earliest_upload(files)
         if upload is None:
             continue
-        if upload >= cutoff_dt:
+        if upload >= cutoff:
             continue
         if not release_supports_python(files, oldest_python):
             continue
@@ -231,10 +235,10 @@ def update_pyproject(pyproject_path: Path, updates: list[tuple[str, str]]) -> in
     return changed
 
 
-def update_makefile_old_date(makefile_path: Path, new_date: datetime.date) -> bool:
+def update_makefile_old_date(makefile_path: Path, new_date: datetime.datetime) -> bool:
     text = makefile_path.read_text()
     pattern = re.compile(r'^OLD_DATE\s*=\s*\S+\s*$', re.MULTILINE)
-    new_line = f'OLD_DATE = {new_date.isoformat()}'
+    new_line = f'OLD_DATE = {format_utc(new_date)}'
     new_text, n = pattern.subn(new_line, text, count=1)
     if n == 0:
         msg = 'OLD_DATE assignment not found in Makefile'
@@ -250,19 +254,25 @@ def main() -> int:  # noqa: C901, PLR0915
     parser.add_argument(
         '--min-old-date',
         required=True,
-        type=parse_date,
-        help='YYYY-MM-DD; floor for the new OLD_DATE.',
+        type=parse_datetime,
+        help='RFC 3339 timestamp (with timezone); floor for the new OLD_DATE.',
     )
     parser.add_argument(
         '--delay-days', required=True, type=int, help='Target lag behind today in days.'
+    )
+    parser.add_argument(
+        '--today',
+        required=True,
+        type=parse_datetime,
+        help='RFC 3339 timestamp (with timezone); reference instant for the policy.',
     )
     parser.add_argument('--pyproject', type=Path, default=Path('pyproject.toml'))
     parser.add_argument('--makefile', type=Path, default=Path('Makefile'))
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
 
-    new_old_date = compute_old_date(args.min_old_date, args.delay_days)
-    print(f'OLD_DATE: {args.min_old_date.isoformat()} -> {new_old_date.isoformat()}')
+    new_old_date = compute_old_date(args.min_old_date, args.delay_days, args.today)
+    print(f'OLD_DATE: {format_utc(args.min_old_date)} -> {format_utc(new_old_date)}')
 
     with args.pyproject.open('rb') as f:
         pyproject = tomli.load(f)
@@ -318,7 +328,7 @@ def main() -> int:  # noqa: C901, PLR0915
 
     if args.dry_run:
         print(
-            f'dry-run: {len(updates)} pyproject edit(s), OLD_DATE target {new_old_date.isoformat()}'
+            f'dry-run: {len(updates)} pyproject edit(s), OLD_DATE target {format_utc(new_old_date)}'
         )
         return 0
 
