@@ -32,7 +32,7 @@ from inspect import cleandoc
 from re import fullmatch, match
 from textwrap import indent
 from types import FunctionType
-from typing import Any, ClassVar, Protocol, TypeAlias, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeAlias, cast
 
 import numpy as np
 from jaxtyping import AbstractDtype
@@ -149,10 +149,36 @@ class DataFrame(Protocol):
         """Convert to a numpy array."""
 
 
-class String(AbstractDtype):
-    """Represent a `numpy.str_` data dtype."""
+class Series(Protocol):
+    """
+    Duck type of the series arguments accepted by the wrappers.
 
-    dtypes = r'<U\d+'
+    Both `pandas.Series` and :doc:`polars.Series
+    <polars:reference/series/index>` match; they are converted to R vectors,
+    with categoricals becoming factors.
+    """
+
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
+        """Export as an Arrow PyCapsule stream."""
+
+    @property
+    def dtype(self) -> object:
+        """Element data type."""
+
+    def to_numpy(self) -> np.ndarray:
+        """Convert to a numpy array."""
+
+
+if TYPE_CHECKING:
+    # type checkers reject subscripting a plain class, so hide the custom dtype
+    # behind `Annotated`, like jaxtyping does with its own dtypes
+    from typing import Annotated as String
+else:
+
+    class String(AbstractDtype):
+        """Represent a `numpy.str_` data dtype."""
+
+        dtypes = r'<U\d+'
 
 
 def drop_none(kw: dict[str, Any]) -> dict[str, Any]:

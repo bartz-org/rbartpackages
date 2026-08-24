@@ -50,6 +50,7 @@ Protocols
     :toctree:
 
     DataFrame
+    Series
 
 Array dtypes
 ------------
@@ -66,6 +67,7 @@ Array dtypes
 from rbartpackages._src.base import (
     DataFrame,
     RObjectBase,
+    Series,
     String,
     rfunction,
     rmethod,
