@@ -476,6 +476,12 @@ def test_dbarts_setters(data: Data) -> None:
     # end up empty); whole-matrix updates are forced by default
     assert nnone(sampler.setPredictor(2 * data.x, forceUpdate=False)).item()
     assert nnone(sampler.setPredictor(data.x[:, 0], 1)).item()  # column 1, 1-based
+
+    # a partial update reports one flag per observation instead
+    installed = nnone(sampler.setPredictor(data.x[:, 1], 1, forceUpdate='partial'))
+    assert installed.shape == (n,)
+    assert installed.all()
+
     sampler.setSigma(1.0)
 
     # replacing the test predictors changes the test draws

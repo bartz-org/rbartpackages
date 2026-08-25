@@ -27,7 +27,7 @@
 from functools import partial
 from typing import Literal, cast, no_type_check
 
-from jaxtyping import Float64, Int32, Integer
+from jaxtyping import Bool, Float64, Int32, Integer
 from numpy import ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
@@ -610,18 +610,13 @@ class dbarts(RObjectBase):
         self,
         x: Float64[ndarray, 'n cols'] | Float64[ndarray, ' n'],
         column: int | String[ndarray, ' cols'] | None = None,
-        forceUpdate: bool | None = None,
+        forceUpdate: bool | Literal['partial'] | None = None,
         *,
         updateCutPoints: bool | None = None,
         updateState: bool | None = None,
-    ) -> Int32[ndarray, ' 1'] | None:
+    ) -> Bool[ndarray, ' 1'] | Bool[ndarray, ' n'] | None:
         """
         Replace the predictor matrix (or the 1-based `column`).
-
-        Unforced updates (``forceUpdate=False``, the single-column default)
-        return whether the update succeeded: it fails if a tree ends up with
-        an empty leaf, rolling back the change. Whole-matrix updates are
-        forced by default.
 
         Parameters
         ----------
@@ -634,6 +629,11 @@ class dbarts(RObjectBase):
         forceUpdate
             Whether to keep the update even if it leaves a tree with an empty
             leaf; default ``True`` for a whole matrix, ``False`` for a column.
+            An unforced update reports whether it succeeded, rolling the change
+            back if it did not. ``"partial"`` instead installs the new column
+            one observation at a time, rolling back only the observations that
+            would empty a leaf, and reports which ones were kept; it requires a
+            single `column` and is incompatible with `updateCutPoints`.
         updateCutPoints
             Whether to recompute the decision-rule cutpoints from the new
             predictors.
@@ -642,7 +642,7 @@ class dbarts(RObjectBase):
 
         Returns
         -------
-        Whether the update succeeded for an unforced update, else ``None``.
+        Whether the update succeeded for an unforced update, one flag per observation for a partial one, else ``None``.
         """
         kw = {
             'forceUpdate': forceUpdate,
