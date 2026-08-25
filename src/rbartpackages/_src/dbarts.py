@@ -653,7 +653,10 @@ class dbarts(RObjectBase):
             'updateState': updateState,
         }
         args = () if column is None else (column,)
-        return self._call_rmethod('setPredictor', x, *args, **drop_none(kw))
+        out = self._call_rmethod('setPredictor', x, *args, **drop_none(kw))
+        if out is robjects.NULL:
+            return None  # R returns invisible NULL for a forced update
+        return out
 
     def setTestPredictor(
         self,

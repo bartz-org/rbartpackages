@@ -497,6 +497,10 @@ def test_dbarts_setters(data: Data) -> None:
     assert nnone(sampler.setPredictor(2 * data.x, forceUpdate=False)).item()
     assert nnone(sampler.setPredictor(data.x[:, 0], 1)).item()  # column 1, 1-based
 
+    # a forced update reports nothing
+    assert sampler.setPredictor(2 * data.x) is None
+    assert sampler.setPredictor(data.x[:, 0], 1, forceUpdate=True) is None
+
     # a partial update reports one flag per observation instead
     installed = nnone(sampler.setPredictor(data.x[:, 1], 1, forceUpdate='partial'))
     assert installed.shape == (n,)
