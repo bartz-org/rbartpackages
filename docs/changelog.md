@@ -31,6 +31,12 @@ SOFTWARE.
 # Changelog
 
 
+## 0.2.1 Bayesian Alien Radioactive Tacos (2026-08-25)
+
+- typing fixes
+- update dbarts wrapper for changes in dbarts
+
+
 ## 0.2.0 Baruch's Algorithm for Recursive Trainspotting (2026-06-25)
 
 - new wrapper module for `missBART`, wrapping `missBART2`
