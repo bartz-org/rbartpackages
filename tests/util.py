@@ -31,12 +31,30 @@ from operator import ge, le
 from typing import Any, Literal, TypeAlias, TypeVar
 
 import numpy as np
+from beartype import BeartypeConf, FrozenDict, beartype
 from jaxtyping import Float64
 from numpy import ndarray
 from numpy.linalg import norm
 from numpy.testing import assert_allclose as _np_assert_allclose  # noqa: TID251
 from numpy.testing import assert_array_equal as _np_assert_array_equal  # noqa: TID251
 from numpy.typing import ArrayLike, NDArray
+
+# WORKAROUND(python<3.11): import Self from typing
+from typing_extensions import Self
+
+# Runtime typechecker behind the jaxtyping import hook that `conftest` installs
+# over `rbartpackages`; it lives here, at module level, because the hook takes
+# the checker as a dotted path.
+#
+# beartype resolves PEP 673 `Self` only when it decorates a whole class, while
+# the hook decorates each method, so plain beartype refuses the methods that
+# return `Self`. Every `Self` in `rbartpackages` stands for an `RObjectBase`
+# subclass, so overriding the hint with that class keeps those methods checked.
+# The override is a forward reference, resolved in each decorated method's
+# module, which is where beartype would look for the class anyway.
+typechecker = beartype(
+    conf=BeartypeConf(hint_overrides=FrozenDict({Self: 'RObjectBase'}))
+)
 
 # Annotation for a keyword-argument dict forwarded via `**`: a bare `dict` leaves
 # the values untyped, so unpacking it into a typed call does not make the checker
