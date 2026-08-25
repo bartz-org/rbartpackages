@@ -39,7 +39,7 @@ from rpy2.rinterface_lib.embedded import RRuntimeError
 from rpy2.robjects.language import LangVector
 
 from rbartpackages import dbarts
-from rbartpackages._src.base import RObjectBase, robjects_r
+from rbartpackages._src.base import DataFrame, RObjectBase, robjects_r
 from tests.util import (
     RegressionData,
     assert_array_equal,
@@ -60,6 +60,11 @@ NTREE = 10
 def phi(x: Float64[ndarray, '...']) -> Float64[ndarray, '...']:
     """Apply the standard normal cumulative distribution function."""
     return (1 + np.vectorize(math.erf)(x / math.sqrt(2))) / 2
+
+
+def column(frame: DataFrame, name: str) -> ndarray:
+    """Extract a column of a dataframe as an array, be it polars or pandas."""
+    return frame[name].to_numpy()
 
 
 @dataclass(frozen=True)
@@ -127,9 +132,24 @@ def check_generics(bart: dbarts.bart, data: Data, binary: bool) -> None:
 
     trees = bart.extract(type='trees')
     # the tree structure comes back as a dataframe (polars if installed, else
-    # pandas); both expose the column names through `.columns`
+    # pandas); both expose the column names through `.columns` and their
+    # columns through `[]`
     assert not isinstance(trees, np.ndarray)
     assert {'sample', 'tree', 'n', 'var', 'value'} <= set(trees.columns)
+
+    # the tree-selection arguments reach the sampler's getTrees through R's
+    # `...`, so they are usable with type='trees' only
+    one = bart.extract(type='trees', treeNums=2, chainNums=1, sampleNums=3)
+    assert not isinstance(one, np.ndarray)
+    assert set(column(one, 'tree')) == {2}
+    assert set(column(one, 'sample')) == {3}
+
+    # newdata routes fresh observations through the frozen trees, leaving the
+    # structure alone and counting them in the `n` column instead
+    routed = bart.extract(type='trees', newdata=data.x_test)
+    assert not isinstance(routed, np.ndarray)
+    assert routed.shape == trees.shape
+    assert column(routed, 'n').max() == m
 
 
 @pytest.mark.parametrize('keeptrees', [False, True], ids=['no-trees', 'keeptrees'])
@@ -537,6 +557,75 @@ def test_dbarts_setters(data: Data) -> None:
     assert sampler.predict(data.x_test).shape == (m, NDPOST)
 
 
+def test_dbarts_get_trees(data: Data) -> None:
+    """`getTrees` returns the structure of the sampler's trees as a data frame.
+
+    With a ``keepTrees`` control the saved samples are returned, and the tree,
+    chain, and sample indices select a subset of them; `current` asks for the
+    live working trees instead, which have no sample dimension. `newdata`
+    routes new observations through the frozen trees, so the `n` column counts
+    those instead of the training ones.
+    """
+    n, _ = data.x.shape
+    m, _ = data.x_test.shape
+    n_chains = 2
+    control = dbarts.dbartsControl(
+        n_trees=NTREE, n_chains=n_chains, n_threads=1, n_samples=NDPOST, keepTrees=True
+    )
+    sampler = dbarts.dbarts(data.x, data.y, control=control)
+    sampler.run(NSKIP, NDPOST)
+
+    trees = sampler.getTrees()
+    assert set(trees.columns) == {'chain', 'sample', 'tree', 'n', 'var', 'value'}
+    assert set(column(trees, 'chain')) == set(range(1, n_chains + 1))
+    assert column(trees, 'n').max() == n  # the root holds every observation
+
+    # each index selects along its own axis, so they are all told apart
+    subset = sampler.getTrees(np.array([3, 5]), 2, np.array([7, 8, 9]))
+    assert set(column(subset, 'tree')) == {3, 5}
+    assert set(column(subset, 'chain')) == {2}
+    assert set(column(subset, 'sample')) == {7, 8, 9}
+
+    # the live working trees are a single set per chain, so no sample column
+    current = sampler.getTrees(current=True)
+    assert set(current.columns) == {'chain', 'tree', 'n', 'var', 'value'}
+
+    # new observations keep the tree structure but change the node counts
+    routed = sampler.getTrees(newdata=data.x_test)
+    assert routed.shape == trees.shape
+    assert column(routed, 'n').max() == m
+
+
+def test_update_predictor_jointly(data: Data) -> None:
+    """The joint update replaces a shared predictor column across samplers.
+
+    The column is matched by name, so it may sit at a different position in
+    each sampler; the returned flags say which observations were installed,
+    and those take the new value in every sampler.
+    """
+    n, _ = data.x.shape
+    control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
+    frame = data.frame.drop(columns='y')  # named columns to match x1 across
+    first = dbarts.dbarts(frame, data.y, control=control)
+    second = dbarts.dbarts(frame[['x2', 'x1', 'x3']], -data.y, control=control)
+    first.run(NSKIP, NDPOST)
+    second.run(NSKIP, NDPOST)
+
+    new = data.x[:, 2]
+    installed = dbarts.updatePredictorPerObservationJointly([first, second], new, 'x1')
+    assert installed.shape == (n,)
+    assert installed.dtype == np.bool_
+    for sampler, index in [(first, 0), (second, 1)]:
+        x = np.asarray(robjects_r('function(d) d@x')(sampler.data._robject))
+        assert_array_equal(x[installed, index], new[installed])
+
+    # a lone sampler is accepted too, and a 1-based index names the column
+    again = dbarts.updatePredictorPerObservationJointly(
+        first, data.x[:, 1], 1, updateState=True
+    )
+    assert again.shape == (n,)
+
+
 def test_dbarts_show_trees(data: Data, capfd: pytest.CaptureFixture) -> None:
     """`show` and `printTrees` write to the R console, `plotTree` to a device."""
     control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
@@ -610,35 +699,53 @@ def test_signature_defaults_match_r(
         )
 
 
+# the tree-selection arguments `extract` documents but forwards through R's
+# `...` to the sampler's getTrees rather than taking as named formals
+TREE_ARGS = {'treeNums', 'chainNums', 'sampleNums', 'newdata'}
+
 # the bart/rbart fit generics, their R class, the dispatch arguments the
-# wrapper binds itself, and the R arguments left unexposed
+# wrapper binds itself, the R arguments left unexposed, and the Python
+# arguments that reach R through `...`
 GENERIC_CASES = [
-    (dbarts.bart.predict, 'predict', 'bart', {'object', 'newdata'}, {'...'}),
-    (dbarts.bart.extract, 'extract', 'bart', {'object'}, {'...'}),
-    (dbarts.bart.fitted, 'fitted', 'bart', {'object'}, {'...'}),
-    (dbarts.rbart_vi.predict, 'predict', 'rbart', {'object', 'newdata'}, {'...'}),
+    (dbarts.bart.predict, 'predict', 'bart', {'object', 'newdata'}, {'...'}, set()),
+    (dbarts.bart.extract, 'extract', 'bart', {'object'}, {'...'}, TREE_ARGS),
+    (dbarts.bart.fitted, 'fitted', 'bart', {'object'}, {'...'}, set()),
+    (
+        dbarts.rbart_vi.predict,
+        'predict',
+        'rbart',
+        {'object', 'newdata'},
+        {'...'},
+        set(),
+    ),
 ]
 
 
 @pytest.mark.parametrize(
-    ('meth', 'generic', 'rclass', 'bound', 'unexposed'),
+    ('meth', 'generic', 'rclass', 'bound', 'unexposed', 'dotted'),
     GENERIC_CASES,
-    ids=[f'{g}.{c}' for _, g, c, _, _ in GENERIC_CASES],
+    ids=[f'{g}.{c}' for _, g, c, _, _, _ in GENERIC_CASES],
 )
 def test_generic_signatures_match_r(
-    meth: Callable, generic: str, rclass: str, bound: set[str], unexposed: set[str]
+    meth: Callable,
+    generic: str,
+    rclass: str,
+    bound: set[str],
+    unexposed: set[str],
+    dotted: set[str],
 ) -> None:
     """The explicit `predict`/`extract`/`fitted` signatures track the R methods.
 
     Every Python argument must appear in the dispatched R method's formals
-    (minus the dispatch arguments the wrapper fills itself), every R argument
-    must be exposed or deliberately unexposed, and the defaults vary with the
-    fit, so the signature defers each to R with ``None``.
+    (minus the dispatch arguments the wrapper fills itself) or be one of the
+    arguments R takes through ``...``, every R argument must be exposed or
+    deliberately unexposed, and the defaults vary with the fit, so the
+    signature defers each to R with ``None``.
     """
     method = f'getS3method("{generic}", "{rclass}", envir = asNamespace("dbarts"))'
     rnames = set(robjects_r(f'names(formals({method}))')) - bound
-    params = mapped_params(meth, skip={'newdata'}, dots=True)
-    assert params.keys() <= rnames
+    params = mapped_params(meth, skip=bound, dots=True)
+    assert params.keys() - rnames == dotted
     assert rnames - params.keys() == unexposed
     for name, param in params.items():
         assert param.default is None, name
@@ -663,6 +770,7 @@ SAMPLER_METHODS = [
     ('setTestPredictorAndOffset', set()),
     ('setTestOffset', set()),
     ('printTrees', set()),
+    ('getTrees', set()),
     ('plotTree', {'...'}),
 ]
 
@@ -686,6 +794,19 @@ def test_sampler_method_signatures_match_r(method: str, unexposed: set[str]) -> 
     for name, param in params.items():
         if param.default is not Parameter.empty:
             assert param.default is None, f'{method}, argument {name}'
+
+
+def test_update_predictor_jointly_signature_matches_r() -> None:
+    """The `updatePredictorPerObservationJointly` signature tracks the R function.
+
+    It exposes every R argument, and defers R's ``NA`` `updateState` default
+    with ``None``.
+    """
+    rfuncname = 'dbarts::updatePredictorPerObservationJointly'
+    rnames = set(robjects_r(f'names(formals({rfuncname}))'))
+    params = mapped_params(dbarts.updatePredictorPerObservationJointly, dots=True)
+    assert params.keys() == rnames
+    assert params['updateState'].default is None
 
 
 def test_constructors_reject_unknown_arguments(data: Data) -> None:

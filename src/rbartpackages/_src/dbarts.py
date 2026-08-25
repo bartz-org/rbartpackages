@@ -24,6 +24,7 @@
 
 """Implementation of `rbartpackages.dbarts`."""
 
+from collections.abc import Sequence
 from functools import partial
 from typing import Literal, cast, no_type_check
 
@@ -33,6 +34,7 @@ from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 from rpy2.robjects.language import LangVector
 from rpy2.robjects.methods import RS4
+from rpy2.robjects.vectors import ListVector
 
 # WORKAROUND(python<3.11): import NotRequired, Self, TypedDict from typing
 from typing_extensions import NotRequired, Self, TypedDict
@@ -43,6 +45,7 @@ from rbartpackages._src.base import (
     String,
     drop_none,
     namedlist_to_dict,
+    rfunction,
     robjects_r,
     rproperty,
 )
@@ -724,6 +727,48 @@ class dbarts(RObjectBase):
         kw = {'chainNums': chainNums, 'sampleNums': sampleNums}
         self._call_rmethod('printTrees', treeNums, **drop_none(kw))
 
+    def getTrees(
+        self,
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        current: bool | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
+    ) -> DataFrame:
+        """
+        Return the structure of the given trees as a data frame.
+
+        Parameters
+        ----------
+        treeNums
+            1-based indices of the trees to return; all of them if omitted.
+        chainNums
+            1-based indices of the chains to return; all of them if omitted.
+        sampleNums
+            1-based indices of the saved samples to return; all of them if
+            omitted. Ignored, with a warning, unless the samples are saved
+            (``keepTrees``) and `current` is false.
+        current
+            Whether to return the live working trees (the current sampler
+            position) rather than the saved samples; default false.
+        newdata
+            Predictors routed through the frozen trees, so that the ``n``
+            column counts those observations instead of the training ones; the
+            trees themselves are unchanged.
+
+        Returns
+        -------
+        One row per tree node, depth-first and left branch first, with columns ``chain`` (multiple chains only), ``sample`` (saved samples only), ``tree``, ``n``, ``var``, and ``value``.
+        """
+        kw = {
+            'treeNums': treeNums,
+            'chainNums': chainNums,
+            'sampleNums': sampleNums,
+            'current': current,
+            'newdata': newdata,
+        }
+        return self._call_rmethod('getTrees', **drop_none(kw))
+
     def plotTree(
         self,
         treeNum: int,
@@ -753,6 +798,64 @@ class dbarts(RObjectBase):
             'treePlotPars': to_named_vector(treePlotPars),
         }
         self._call_rmethod('plotTree', treeNum, **drop_none(kw))
+
+
+@partial(rfunction, library='dbarts', rname='updatePredictorPerObservationJointly')
+@no_type_check
+def _update_predictor_jointly(
+    samplers: dbarts | ListVector,
+    x: Float64[ndarray, ' n'],
+    column: int | str,
+    updateState: bool,
+) -> Bool[ndarray, ' n']:
+    """Call R's `updatePredictorPerObservationJointly`; `updateState` may be omitted."""
+    ...
+
+
+def updatePredictorPerObservationJointly(
+    samplers: dbarts | Sequence[dbarts],
+    x: Float64[ndarray, ' n'],
+    column: int | str,
+    *,
+    updateState: bool | None = None,
+) -> Bool[ndarray, ' n']:
+    """
+    Jointly update a shared predictor column, one observation at a time.
+
+    Parameters
+    ----------
+    samplers
+        A sampler, or several sharing the same (index-aligned) observations.
+    x
+        The new values of the shared column, one per observation.
+    column
+        The 1-based index or the name of the shared column. An index refers to
+        the first sampler and is matched by name in the others, so every
+        sampler needs named predictor columns.
+    updateState
+        Whether to refresh the samplers' cached states afterwards; ``None``
+        leaves each of them to its own `control`.
+
+    Returns
+    -------
+    One flag per observation, telling whether its new value was installed in all the samplers.
+
+    Notes
+    -----
+    This is the multi-sampler counterpart of `dbarts.setPredictor` with
+    ``forceUpdate='partial'``: an observation's new value is installed only if
+    it leaves every leaf of every tree of every sampler non-empty, and is
+    rolled back in all of them otherwise. The tree structures are unchanged;
+    only the observations are re-routed.
+    """
+    if isinstance(samplers, dbarts):
+        rsamplers = samplers
+    else:
+        # the R function takes a list of samplers; build it from the wrapped R
+        # objects, as rpy2 has no conversion for a sequence of them
+        rsamplers = robjects_r('list')(*RObjectBase._args2r(samplers))  # noqa: SLF001, base-class access
+    kw = drop_none({'updateState': updateState})
+    return _update_predictor_jointly(rsamplers, x, column, **kw)
 
 
 class _BartBase(RObjectBase):
@@ -846,14 +949,18 @@ class _BartBase(RObjectBase):
         type: Literal['ev', 'ppd', 'bart', 'trees'] | None = None,  # noqa: A002 mirrors the R argument name
         sample: Literal['train', 'test'] | None = None,
         combineChains: bool | None = None,
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
     ) -> Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | DataFrame:
         """
         Return the kept draws for the training (default) or test points.
 
         Like `predict`, the draws are on the expected-value scale by default.
-        With ``type='trees'`` (requires ``keeptrees=True``) the tree
-        structures are returned as a data frame instead. Arguments left to
-        ``None`` are omitted from the R call.
+        With ``type='trees'`` (which requires ``keeptrees=True``) the call is
+        forwarded to `dbarts.getTrees` instead, returning the tree structures
+        as a data frame.
 
         Parameters
         ----------
@@ -861,16 +968,34 @@ class _BartBase(RObjectBase):
             Quantity returned: ``'ev'``, ``'ppd'``, ``'bart'`` (see `predict`),
             or ``'trees'`` for the tree structures.
         sample
-            Which points to extract: ``'train'`` or ``'test'``.
+            Which points to extract: ``'train'`` or ``'test'``; unusable with
+            ``type='trees'``.
         combineChains
             Whether the chains are stacked into the draws axis rather than
-            kept on a leading `nchain` axis.
+            kept on a leading `nchain` axis; unusable with ``type='trees'``.
+        treeNums
+            1-based indices of the trees to return; ``type='trees'`` only.
+        chainNums
+            1-based indices of the chains to return; ``type='trees'`` only.
+        sampleNums
+            1-based indices of the samples to return; ``type='trees'`` only.
+        newdata
+            Predictors routed through the frozen trees, so that the ``n``
+            column counts those observations; ``type='trees'`` only.
 
         Returns
         -------
         The draws at the requested points, or the tree-structure data frame with ``type='trees'``.
         """
-        kw = {'type': type, 'sample': sample, 'combineChains': combineChains}
+        kw = {
+            'type': type,
+            'sample': sample,
+            'combineChains': combineChains,
+            'treeNums': treeNums,
+            'chainNums': chainNums,
+            'sampleNums': sampleNums,
+            'newdata': newdata,
+        }
         return self._call_rmethod('extract', **drop_none(kw))
 
     def fitted(

@@ -44,6 +44,7 @@ Low-level sampler
     dbarts
     dbartsControl
     dbartsData
+    updatePredictorPerObservationJointly
 
 Supporting types
 ----------------
@@ -65,4 +66,5 @@ from rbartpackages._src.dbarts import (
     dbartsControl,
     dbartsData,
     rbart_vi,
+    updatePredictorPerObservationJointly,
 )

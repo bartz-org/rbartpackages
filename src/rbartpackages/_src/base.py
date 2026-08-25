@@ -134,31 +134,6 @@ DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
 
 
 @runtime_checkable
-class DataFrame(Protocol):
-    """
-    Duck type of the dataframe arguments accepted by the wrappers.
-
-    Both `pandas.DataFrame` and :doc:`polars.DataFrame
-    <polars:reference/dataframe/index>` match; they are converted to R data
-    frames, with categorical columns becoming factors.
-    """
-
-    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
-        """Export as an Arrow PyCapsule stream."""
-
-    @property
-    def columns(self) -> Iterable[str]:
-        """Column names."""
-
-    @property
-    def shape(self) -> tuple[int, ...]:
-        """Frame dimensions."""
-
-    def to_numpy(self) -> np.ndarray:
-        """Convert to a numpy array."""
-
-
-@runtime_checkable
 class Series(Protocol):
     """
     Duck type of the series arguments accepted by the wrappers.
@@ -176,6 +151,35 @@ class Series(Protocol):
     @property
     def dtype(self) -> object:
         """Element data type."""
+
+    def to_numpy(self) -> np.ndarray:
+        """Convert to a numpy array."""
+
+
+@runtime_checkable
+class DataFrame(Protocol):
+    """
+    Duck type of the dataframe arguments accepted by the wrappers.
+
+    Both `pandas.DataFrame` and :doc:`polars.DataFrame
+    <polars:reference/dataframe/index>` match; they are converted to R data
+    frames, with categorical columns becoming factors. The wrappers that
+    return a data frame return whichever of the two is installed.
+    """
+
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
+        """Export as an Arrow PyCapsule stream."""
+
+    def __getitem__(self, column: str, /) -> Series:
+        """Take a column by name."""
+
+    @property
+    def columns(self) -> Iterable[str]:
+        """Column names."""
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Frame dimensions."""
 
     def to_numpy(self) -> np.ndarray:
         """Convert to a numpy array."""
