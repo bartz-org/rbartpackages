@@ -180,7 +180,9 @@ else:
     class String(AbstractDtype):
         """Represent a `numpy.str_` data dtype."""
 
-        dtypes = r'<U\d+'
+        # jaxtyping matches this against `array.dtype.type.__name__`, so it must
+        # name the scalar type rather than the `<U8`-style dtype string.
+        dtypes = 'str_'
 
 
 def drop_none(kw: dict[str, Any]) -> dict[str, Any]:
