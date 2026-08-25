@@ -29,8 +29,25 @@ from sys import modules
 
 import numpy as np
 import pytest
+from jaxtyping import __version__ as jaxtyping_version
+from jaxtyping import install_import_hook
+from packaging.version import Version
 
 from tests.util import int_seed, nnone
+
+# Check the jaxtyping annotations (dtypes and shapes) against the actual values
+# at runtime. The hook rewrites the wrappers as they are imported, so it must
+# run before any test module pulls one in; conftest is loaded first, and none of
+# the imports above reach `rbartpackages`.
+#
+# WORKAROUND(jaxtyping<0.3.11): the hook honours `@no_type_check` only from
+# 0.3.11 on. Below that it also decorates the methods returning `Self`, which
+# beartype rejects because it resolves `Self` from the class, and importing the
+# wrappers fails outright. Skipping the checks on the oldest supported
+# environment beats raising the floor of a runtime dependency for a test-only
+# feature; the checks still run everywhere else.
+if Version(jaxtyping_version) >= Version('0.3.11'):
+    install_import_hook('rbartpackages', 'beartype.beartype')
 
 
 @pytest.fixture

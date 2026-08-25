@@ -461,6 +461,8 @@ class dbarts(RObjectBase):
             'sampleNodeParametersFromPrior', **drop_none({'updateState': updateState})
         )
 
+    # `no_type_check` for the `Self` return, as in `RObjectBase._wrap`
+    @no_type_check
     def copy(self, *, shallow: bool | None = None) -> Self:
         """
         Create a deep (default) or shallow copy of the sampler.

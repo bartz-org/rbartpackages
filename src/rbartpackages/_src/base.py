@@ -32,7 +32,16 @@ from inspect import cleandoc
 from re import fullmatch, match
 from textwrap import indent
 from types import FunctionType
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeAlias, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Protocol,
+    TypeAlias,
+    cast,
+    no_type_check,
+    runtime_checkable,
+)
 
 import numpy as np
 from jaxtyping import AbstractDtype
@@ -125,6 +134,7 @@ def dict_to_r(x: dict[str, Any]) -> robjects.ListVector:
 DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
 
 
+@runtime_checkable
 class DataFrame(Protocol):
     """
     Duck type of the dataframe arguments accepted by the wrappers.
@@ -149,6 +159,7 @@ class DataFrame(Protocol):
         """Convert to a numpy array."""
 
 
+@runtime_checkable
 class Series(Protocol):
     """
     Duck type of the series arguments accepted by the wrappers.
@@ -374,7 +385,11 @@ class RObjectBase:
         self._robject = self._invoke_rfunc(args, kw)
         self._set_attrs_from_robject()
 
+    # `no_type_check` exempts this from the runtime typechecker the tests install
+    # (see tests/conftest.py): beartype can only resolve `Self` when it decorates
+    # the whole class, while jaxtyping's import hook decorates each method.
     @classmethod
+    @no_type_check
     def _wrap(cls, robject: object) -> Self:
         """
         Wrap an existing R object, skipping the call to the R function.
