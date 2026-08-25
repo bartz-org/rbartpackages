@@ -25,7 +25,7 @@
 """Pytest configuration."""
 
 from re import fullmatch
-from sys import modules, version_info
+from sys import modules
 
 import numpy as np
 import pytest
@@ -39,14 +39,7 @@ from tests.util import int_seed, nnone
 # module pulls one in; conftest is loaded first, and none of the imports above
 # reach `rbartpackages`. The checker is named by dotted path, which the hook
 # resolves as an attribute of the already-imported `tests.util`.
-#
-# WORKAROUND(python<3.11): beartype cannot digest the `Unpack[Hyperparams]` in
-# `missBART2.__init__` while `typing_extensions.Unpack` is not yet an alias of
-# `typing.Unpack`, and rejects it hard enough to fail the import. This leaves
-# 3.10 unchecked, and with it the oldest-dependencies run, the one most likely
-# to turn up an incompatibility of exactly this kind.
-if version_info >= (3, 11):
-    install_import_hook('rbartpackages', 'tests.util.typechecker')
+install_import_hook('rbartpackages', 'tests.util.typechecker')
 
 
 @pytest.fixture
