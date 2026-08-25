@@ -369,15 +369,12 @@ def test_dbarts(data: Data) -> None:
     """The sampler takes a formula string and runs on demand.
 
     Draws come back as a dict of arrays with the observations on the first
-    axis. A copy of the sampler (possible only without cached state) runs
-    independently, and the sampler can be modified in place, with the field
-    properties tracking the updates.
+    axis. A copy of the sampler runs independently, and the sampler can be
+    modified in place, with the field properties tracking the updates.
     """
     n, p = data.x.shape
     m, _ = data.x_test.shape
-    control = dbarts.dbartsControl(
-        n_trees=NTREE, n_chains=1, n_threads=1, updateState=False
-    )
+    control = dbarts.dbartsControl(n_trees=NTREE, n_chains=1, n_threads=1)
     sampler = dbarts.dbarts(
         'y ~ x1 + x2 + x3',
         data=data.frame,
@@ -400,7 +397,8 @@ def test_dbarts(data: Data) -> None:
     pred = sampler.predict(data.x_test)
     assert pred.shape == (m,)
 
-    # a copy is a new wrapped sampler that runs independently
+    # a copy is a new wrapped sampler that runs independently, cached state
+    # and all
     copy = sampler.copy()
     assert isinstance(copy, dbarts.dbarts)
     assert copy is not sampler
@@ -412,11 +410,11 @@ def test_dbarts(data: Data) -> None:
     sampler.sampleNodeParametersFromPrior()
 
     # the field properties read off the live R object: setResponse shows
-    # through data, and the state is never cached with updateState=False
+    # through data
     assert sampler.model.rclass[0] == 'dbartsModel'
     assert isinstance(sampler.control, dbarts.dbartsControl)
     assert isinstance(sampler.data, dbarts.dbartsData)
-    assert sampler.state is None
+    assert sampler.state is not None
 
     # replacing the response redirects the fit
     sampler.setResponse(-data.y)

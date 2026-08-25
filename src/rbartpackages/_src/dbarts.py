@@ -465,9 +465,6 @@ class dbarts(RObjectBase):
         """
         Create a deep (default) or shallow copy of the sampler.
 
-        The R method is broken once the sampler state has been cached; create
-        the sampler with ``dbartsControl(updateState=False)`` to use it.
-
         Parameters
         ----------
         shallow
