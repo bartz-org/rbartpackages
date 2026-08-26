@@ -612,7 +612,7 @@ class dbarts(RObjectBase):
     def setPredictor(
         self,
         x: Float64[ndarray, 'n cols'] | Float64[ndarray, ' n'],
-        column: int | String[ndarray, ' cols'] | None = None,
+        column: int | str | Integer[ndarray, ' cols'] | None = None,
         forceUpdate: bool | Literal['partial'] | None = None,
         *,
         updateCutPoints: bool | None = None,
@@ -624,11 +624,13 @@ class dbarts(RObjectBase):
         Parameters
         ----------
         x
-            The replacement predictors: a whole matrix, or a single column's
-            values when `column` is given.
+            The replacement predictors: a whole matrix, or the values of the
+            columns selected by `column`.
         column
-            The 1-based index or name of the single column to replace; the
-            whole matrix is replaced if omitted.
+            The 1-based index or name of a single column, or an array of
+            indices for several columns; the whole matrix is replaced if
+            omitted. Selecting by name requires the sampler to have column
+            names, and works one column at a time.
         forceUpdate
             Whether to keep the update even if it leaves a tree with an empty
             leaf; default ``True`` for a whole matrix, ``False`` for a column.
@@ -661,7 +663,7 @@ class dbarts(RObjectBase):
     def setTestPredictor(
         self,
         x_test: Float64[ndarray, 'm cols'] | Float64[ndarray, ' m'],
-        column: int | String[ndarray, ' cols'] | None = None,
+        column: int | str | Integer[ndarray, ' cols'] | None = None,
     ) -> None:
         """
         Replace the test predictor matrix (or the 1-based `column`).
@@ -669,11 +671,13 @@ class dbarts(RObjectBase):
         Parameters
         ----------
         x_test
-            The replacement test predictors: a whole matrix, or a single
-            column's values when `column` is given.
+            The replacement test predictors: a whole matrix, or the values of
+            the columns selected by `column`.
         column
-            The 1-based index or name of the single column to replace; the
-            whole matrix is replaced if omitted.
+            The 1-based index or name of a single column, or an array of
+            indices for several columns; the whole matrix is replaced if
+            omitted. Selecting by name requires the test matrix to have column
+            names, and works one column at a time.
         """
         args = () if column is None else (column,)
         self._call_rmethod('setTestPredictor', x_test, *args)

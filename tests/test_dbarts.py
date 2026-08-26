@@ -561,6 +561,39 @@ def test_dbarts_setters(data: Data) -> None:
     assert sampler.predict(data.x_test).shape == (m, NDPOST)
 
 
+def test_dbarts_setters_column(data: Data) -> None:
+    """The predictor setters select the columns to replace by name or by index.
+
+    A single column is selected by 1-based index or by name, several at once by
+    an array of indices; names require the sampler to have column names.
+    """
+    control = dbarts.dbartsControl(
+        n_trees=NTREE, n_chains=1, n_threads=1, n_samples=NDPOST
+    )
+    frame = data.frame.drop(columns='y')  # named columns, so 'x1' resolves
+    sampler = dbarts.dbarts(frame, data.y, test=data.test_frame, control=control)
+    sampler.run(NSKIP, NDPOST)
+
+    def slot(name: str) -> ndarray:
+        return np.asarray(robjects_r(f'function(d) d@{name}')(sampler.data._robject))
+
+    new = data.x[:, 2]
+    assert sampler.setPredictor(new, 'x1', forceUpdate=True) is None
+    assert_array_equal(slot('x')[:, 0], new)
+
+    pair = 2 * data.x[:, :2]
+    assert sampler.setPredictor(pair, np.array([1, 2]), forceUpdate=True) is None
+    assert_array_equal(slot('x')[:, :2], pair)
+
+    # the test matrix takes the same selectors
+    new_test = data.x_test[:, 2]
+    sampler.setTestPredictor(new_test, 'x1')
+    assert_array_equal(slot('x.test')[:, 0], new_test)
+    pair_test = 2 * data.x_test[:, :2]
+    sampler.setTestPredictor(pair_test, np.array([1, 2]))
+    assert_array_equal(slot('x.test')[:, :2], pair_test)
+
+
 def test_dbarts_get_trees(data: Data) -> None:
     """`getTrees` returns the structure of the sampler's trees as a data frame.
 
