@@ -46,13 +46,12 @@ the R argument ``x.train``. The same pattern works for the other wrappers, e.g.
 `rbartpackages.BART`, `rbartpackages.dbarts`, `rbartpackages.bartMachine`, and
 `rbartpackages.missBART`.
 
-Data frames and other array types
----------------------------------
+Data frames
+-----------
 
-With the matching extra installed, you can pass `pandas` / `polars` data frames
-or `jax` arrays directly; they are converted to the appropriate R object. This
-is required for `rbartpackages.bartMachine`, whose ``X`` argument must be an R
-data frame.
+R dataframes are converted to/from `pandas` dataframes on the Python side. If
+`polars` is installed, dataframes are returned as `polars` dataframes, and both
+`pandas` and `polars` dataframes are accepted as input.
 
 R documentation
 ---------------

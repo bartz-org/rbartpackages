@@ -46,7 +46,7 @@ import numpy as np
 from jaxtyping import AbstractDtype
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
-from rpy2.robjects import BoolVector, conversion, numpy2ri
+from rpy2.robjects import BoolVector, conversion, numpy2ri, pandas2ri
 from rpy2.robjects.help import Package
 from rpy2.robjects.methods import RS4
 
@@ -54,19 +54,12 @@ from rpy2.robjects.methods import RS4
 from typing_extensions import Self
 
 # converter for pandas
-PANDAS_CONVERTER = conversion.Converter('pandas')
-try:
-    from rpy2.robjects import pandas2ri
-except ImportError:  # pragma: no cover - optional dep always present in CI
-    pass
-else:
-    PANDAS_CONVERTER = pandas2ri.converter
+PANDAS_CONVERTER = pandas2ri.converter
 
 # converter for polars
 POLARS_CONVERTER = conversion.Converter('polars')
 try:
     import polars as pl
-    from rpy2.robjects import pandas2ri
 except ImportError:  # pragma: no cover - optional dep always present in CI
     pass
 else:
@@ -163,8 +156,8 @@ class DataFrame(Protocol):
 
     Both `pandas.DataFrame` and :doc:`polars.DataFrame
     <polars:reference/dataframe/index>` match; they are converted to R data
-    frames, with categorical columns becoming factors. The wrappers that
-    return a data frame return whichever of the two is installed.
+    frames, with categorical columns becoming factors. The wrappers that return
+    a data frame return a polars one if polars is installed, else a pandas one.
     """
 
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:

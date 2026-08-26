@@ -39,6 +39,7 @@ dependencies = [
     "rpy2>=3.6.2",
     "numpy>=2.2.6",
     "jaxtyping>=0.3.2",
+    "pandas>=2.3.2",
     # WORKAROUND(python<3.11): backports NotRequired and Self
     "typing-extensions>=4.14.1",
 ]
@@ -46,8 +47,8 @@ dependencies = [
 [project.optional-dependencies]
 # Each extra backs a soft-imported converter in `rbartpackages.base`.
 jax = ["jax>=0.6.2"]
-pandas = ["pandas>=2.3.2"]
-polars = ["polars>=1.32.3", "pandas>=2.3.2"]
+polars = ["polars>=1.32.3"]
+pandas = []  # keep for backward compatibility
 
 [project.urls]
 Homepage = "https://github.com/bartz-org/rbartpackages"

@@ -3048,6 +3048,8 @@ dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "rpy2" },
     { name = "typing-extensions" },
 ]
@@ -3058,13 +3060,7 @@ jax = [
     { name = "jax", version = "0.10.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "jax", version = "0.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-pandas = [
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-]
 polars = [
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "polars" },
 ]
 
@@ -3107,8 +3103,7 @@ requires-dist = [
     { name = "jax", marker = "extra == 'jax'", specifier = ">=0.6.2" },
     { name = "jaxtyping", specifier = ">=0.3.2" },
     { name = "numpy", specifier = ">=2.2.6" },
-    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.3.2" },
-    { name = "pandas", marker = "extra == 'polars'", specifier = ">=2.3.2" },
+    { name = "pandas", specifier = ">=2.3.2" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=1.32.3" },
     { name = "rpy2", specifier = ">=3.6.2" },
     { name = "typing-extensions", specifier = ">=4.14.1" },

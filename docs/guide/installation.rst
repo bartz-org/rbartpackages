@@ -42,12 +42,15 @@ To install the latest development version:
 
     pip install git+https://github.com/bartz-org/rbartpackages.git
 
-Optional extras enable the corresponding input-conversion paths: ``pandas`` and
-``polars`` let you pass data frames, ``jax`` lets you pass jax arrays.
+The wrappers that return a data frame return a pandas one by default. If
+`polars` is installed, output dataframes switch to polars. If `jax` is
+installed, jax arrays are accepted as input arrays, but output arrays remain
+numpy. Two extras are provided for convenience to install these packages
+alongside `rbartpackages`:
 
 .. code-block:: sh
 
-    pip install rbartpackages[pandas,polars,jax]
+    pip install 'rbartpackages[polars,jax]'
 
 R packages
 ----------
