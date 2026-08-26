@@ -36,6 +36,7 @@ from rpy2.robjects.methods import RS4
 from rbartpackages._src.base import (
     DataFrame,
     RObjectBase,
+    Series,
     String,
     drop_none,
     namedlist_to_dict,
@@ -420,7 +421,7 @@ class bartMachine(RObjectBase):
     def __init__(
         self,
         X: DataFrame | None = None,
-        y: Float64[ndarray, ' n'] | String[ndarray, ' n'] | None = None,
+        y: Float64[ndarray, ' n'] | String[ndarray, ' n'] | Series | None = None,
         *,
         Xy: DataFrame | None = None,
         num_trees: int = 50,

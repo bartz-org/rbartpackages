@@ -22,13 +22,22 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import argparse
 import datetime
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 CHANGELOG_PATH = Path('docs/changelog.md')
+
+
+def parse_datetime(s: str) -> datetime.datetime:
+    """Parse an RFC 3339 timestamp, requiring an explicit timezone offset."""
+    dt = datetime.datetime.fromisoformat(s.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        msg = f'timestamp {s!r} must include a timezone offset'
+        raise argparse.ArgumentTypeError(msg)
+    return dt
 
 
 def get_version() -> str:
@@ -50,11 +59,11 @@ def _parse_changelog_header(line: str) -> tuple[str, str, str]:
     return m[1], m[2], m[3]
 
 
-def _read_changelog_section() -> tuple[str, str, str, str]:
+def _read_changelog_section(today: datetime.date) -> tuple[str, str, str, str]:
     """Read and validate the topmost changelog section.
 
     Returns ``(version, title, date, body)``. Raises ValueError if the
-    changelog cannot be parsed or the date is not today. The topmost section
+    changelog cannot be parsed or the date is not ``today``. The topmost section
     ends at the next release header, or at the end of the file if it is the
     only one.
     """
@@ -70,22 +79,21 @@ def _read_changelog_section() -> tuple[str, str, str, str]:
         _parse_changelog_header(lines[end])  # validate boundary header
     else:
         end = len(lines)
-    today = datetime.datetime.now(tz=datetime.timezone.utc).date().isoformat()
-    if date != today:
-        msg = f'Changelog date {date} does not match today {today}'
+    if date != today.isoformat():
+        msg = f'Changelog date {date} does not match today {today.isoformat()}'
         raise ValueError(msg)
     body = '\n'.join(lines[first + 1 : end]).strip('\n')
     return version, title, date, body
 
 
-def check_changelog() -> None:
-    """Validate the topmost changelog section is dated today."""
-    _read_changelog_section()
+def check_changelog(today: datetime.date) -> None:
+    """Validate the topmost changelog section is parseable and dated ``today``."""
+    _read_changelog_section(today)
 
 
-def gh_release() -> None:
+def gh_release(today: datetime.date) -> None:
     """Create a draft GitHub release from the topmost changelog section."""
-    version, title, _date, body = _read_changelog_section()
+    version, title, _date, body = _read_changelog_section(today)
     subprocess.run(  # noqa: S603
         [  # noqa: S607
             'gh',
@@ -106,15 +114,27 @@ def gh_release() -> None:
 
 
 def main() -> None:
-    command = sys.argv[1]
-    if command == 'get_version':
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        'command', choices=('get_version', 'check_changelog', 'gh_release')
+    )
+    parser.add_argument(
+        '--today',
+        type=parse_datetime,
+        help='RFC 3339 timestamp (with timezone); reference instant for the changelog date check.',
+    )
+    args = parser.parse_args()
+
+    if args.command == 'get_version':
         print(get_version())
-    elif command == 'check_changelog':
-        check_changelog()
-    elif command == 'gh_release':
-        gh_release()
     else:
-        raise ValueError(command)
+        if args.today is None:
+            parser.error(f'{args.command} requires --today')
+        today = args.today.astimezone(datetime.timezone.utc).date()
+        if args.command == 'check_changelog':
+            check_changelog(today)
+        elif args.command == 'gh_release':
+            gh_release(today)
 
 
 if __name__ == '__main__':
