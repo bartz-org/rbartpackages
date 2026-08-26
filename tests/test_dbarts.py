@@ -594,6 +594,34 @@ def test_dbarts_setters_column(data: Data) -> None:
     assert_array_equal(slot('x.test')[:, :2], pair_test)
 
 
+def test_dbarts_setters_clear_offset(data: Data) -> None:
+    """``None`` clears the offsets instead of being rejected by the converter."""
+    n, _ = data.x.shape
+    control = dbarts.dbartsControl(
+        n_trees=NTREE, n_chains=1, n_threads=1, n_samples=NDPOST
+    )
+    sampler = dbarts.dbarts(data.x, data.y, test=data.x_test, control=control)
+
+    def is_null(name: str) -> bool:
+        out = robjects_r(f'function(d) is.null(d@{name})')(sampler.data._robject)
+        return bool(np.asarray(out).item())
+
+    sampler.setOffset(np.full(n, 1e3))
+    assert not is_null('offset')
+    sampler.setOffset(None)
+    assert is_null('offset')
+
+    sampler.setTestOffset(0.0)
+    assert not is_null('offset.test')
+    sampler.setTestOffset(None)
+    assert is_null('offset.test')
+
+    sampler.setTestPredictorAndOffset(data.x_test, 0.0)
+    assert not is_null('offset.test')
+    sampler.setTestPredictorAndOffset(data.x_test, None)
+    assert is_null('offset.test')
+
+
 def test_dbarts_get_trees(data: Data) -> None:
     """`getTrees` returns the structure of the sampler's trees as a data frame.
 

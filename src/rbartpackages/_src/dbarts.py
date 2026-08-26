@@ -589,7 +589,8 @@ class dbarts(RObjectBase):
             Whether to refresh the sampler's cached state afterwards.
         """
         kw = {'updateScale': updateScale, 'updateState': updateState}
-        self._call_rmethod('setOffset', offset, **drop_none(kw))
+        offset_arg = robjects.NULL if offset is None else offset
+        self._call_rmethod('setOffset', offset_arg, **drop_none(kw))
 
     def setSigma(
         self,
@@ -698,7 +699,8 @@ class dbarts(RObjectBase):
             The replacement test offset (a scalar is expanded to all test
             points), or ``None`` to clear it.
         """
-        self._call_rmethod('setTestPredictorAndOffset', x_test, offset_test)
+        offset_arg = robjects.NULL if offset_test is None else offset_test
+        self._call_rmethod('setTestPredictorAndOffset', x_test, offset_arg)
 
     def setTestOffset(self, offset_test: Float64[ndarray, ' m'] | float | None) -> None:
         """
@@ -710,7 +712,8 @@ class dbarts(RObjectBase):
             The replacement test offset (a scalar is expanded to all test
             points), or ``None`` to clear it.
         """
-        self._call_rmethod('setTestOffset', offset_test)
+        offset_arg = robjects.NULL if offset_test is None else offset_test
+        self._call_rmethod('setTestOffset', offset_arg)
 
     def printTrees(
         self,
