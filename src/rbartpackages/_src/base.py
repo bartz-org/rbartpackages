@@ -45,6 +45,7 @@ from typing import (
 import numpy as np
 from jaxtyping import AbstractDtype
 from rpy2 import robjects
+from rpy2.rinterface import NULLType
 from rpy2.rlike.container import NamedList
 from rpy2.robjects import BoolVector, conversion, numpy2ri, pandas2ri
 from rpy2.robjects.help import Package
@@ -124,6 +125,18 @@ def dict_to_r(x: dict[str, Any]) -> robjects.ListVector:
 
 
 DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
+
+
+# converter for R's NULL
+NULL_CONVERTER = conversion.Converter('null')
+
+
+def null_to_none(_x: object) -> None:
+    """Convert R's NULL to ``None``."""
+    return
+
+
+NULL_CONVERTER.rpy2py.register(NULLType, null_to_none)
 
 
 @runtime_checkable
@@ -219,12 +232,9 @@ def namedlist_to_dict(namedlist: NamedList) -> dict[str, Any]:
 
     Returns
     -------
-    The list values by name, with ``.`` in names replaced by ``_`` and NULL values by ``None``.
+    The list values by name, with ``.`` in names replaced by ``_``.
     """
-    return {
-        str(it.name).replace('.', '_'): None if it.value is robjects.NULL else it.value
-        for it in namedlist.items()
-    }
+    return {str(it.name).replace('.', '_'): it.value for it in namedlist.items()}
 
 
 R_IDENTIFIER = r'(?:[a-zA-Z]|\.(?![0-9]))[a-zA-Z0-9._]*'
@@ -304,7 +314,16 @@ class RObjectBase:
         + BOOL_VECTOR_CONVERTER
         + JAX_CONVERTER
         + DICT_CONVERTER
+        + NULL_CONVERTER
     )
+    """Converters applied to the values crossing the rpy2 boundary.
+
+    The NULL => ``None`` mapping is deliberately receive-only: on the way out
+    ``None`` means "omit the argument and let R apply its default" (see
+    `drop_none`), and that default is often not NULL, so the call sites that do
+    want to pass NULL say so explicitly.
+    """
+
     _convctx = conversion.localconverter(_converter)
 
     @classmethod

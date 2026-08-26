@@ -431,7 +431,7 @@ class dbarts(RObjectBase):
             'numThreads': numThreads,
         }
         out = self._call_rmethod('run', **drop_none(kw))
-        if out is robjects.NULL:
+        if out is None:
             return None  # R returns invisible NULL for zero samples
         return cast(RunSamples, namedlist_to_dict(out))
 
@@ -656,10 +656,7 @@ class dbarts(RObjectBase):
             'updateState': updateState,
         }
         args = () if column is None else (column,)
-        out = self._call_rmethod('setPredictor', x, *args, **drop_none(kw))
-        if out is robjects.NULL:
-            return None  # R returns invisible NULL for a forced update
-        return out
+        return self._call_rmethod('setPredictor', x, *args, **drop_none(kw))
 
     def setTestPredictor(
         self,
@@ -936,13 +933,10 @@ class _BartBase(RObjectBase):
         """
         Normalize the fit's R components into Python values.
 
-        R fills inapplicable list components with NULL (e.g. ``yhat.test``
-        without test data); expose them as None like the dropped ones, unwrap
-        the scalar attributes, and wrap the kept sampler.
+        Unwrap the scalar attributes and wrap the kept sampler. The components
+        R fills with NULL when inapplicable (e.g. ``yhat.test`` without test
+        data) already arrive as None from the converter, like the dropped ones.
         """
-        for name, value in list(vars(self).items()):
-            if value is robjects.NULL:
-                setattr(self, name, None)
         if self.n_chains is not None:
             self.n_chains = cast(ndarray, self.n_chains).item()
         if self.sigest is not None:

@@ -34,7 +34,11 @@ import polars as pl
 import pytest
 
 from rbartpackages import base
-from rbartpackages._src.base import fork_safe_native_threads, robjects_r
+from rbartpackages._src.base import (
+    fork_safe_native_threads,
+    namedlist_to_dict,
+    robjects_r,
+)
 from rbartpackages.base import RObjectBase
 from tests.util import assert_allclose, assert_array_equal
 
@@ -113,6 +117,20 @@ def test_polars_dataframe_converts_to_r() -> None:
     assert isinstance(out, pl.DataFrame)
     assert out.columns == ['a', 'b']
     assert out['a'].to_list() == [1.0, 2.0, 3.0]
+
+
+def test_r_null_converts_to_none() -> None:
+    """R's NULL converts to ``None``, both on its own and inside a list.
+
+    The conversion is receive-only: ``None`` is not converted back to NULL,
+    since on the way out it means "omit the argument" (the drop_none
+    convention).
+    """
+    assert RObjectBase._r2py(robjects_r('NULL')) is None
+    out = RObjectBase._r2py(robjects_r('list(a = 1.0, b = NULL)'))
+    assert namedlist_to_dict(out)['b'] is None
+    with pytest.raises(NotImplementedError, match='NoneType'):
+        RObjectBase._py2r(None)
 
 
 def test_jax_array_converts_to_r() -> None:

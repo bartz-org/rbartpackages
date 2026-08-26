@@ -37,7 +37,6 @@ from typing import Any, Protocol, cast
 import numpy as np
 from jaxtyping import Float64, Int32
 from numpy import ndarray
-from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 
 from rbartpackages._src.base import RObjectBase, drop_none, namedlist_to_dict
@@ -175,10 +174,5 @@ def populate_model_matrix(
         return self._r2py(self._robject)
     self._set_attrs_from_robject()
     mm = cast(_ModelMatrix, self)
-
-    # grp is R NULL when absent (see the subclasses); expose it as None
-    if mm.grp is robjects.NULL:
-        mm.grp = None
-
     mm.rm_const = parse_rm_const(mm.rm_const, mm.X.shape[1], removed=removed)
     return self

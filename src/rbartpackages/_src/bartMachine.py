@@ -369,15 +369,6 @@ class bartMachine(RObjectBase):
     y_levels: String[ndarray, ' 2'] | None = None
     """The response levels, the first being the target one (classification only)."""
 
-    # components that are R NULL when absent, exposed as None
-    _null_components = (
-        'cov_prior_vec',
-        'interaction_constraints',
-        'seed',
-        'sig_sq_est',
-        'y_levels',
-    )
-
     # scalar components, as (name, type): R returns them as length-1 vectors,
     # sometimes of the wrong type (e.g. doubles for integer parameters)
     _scalar_components = (
@@ -494,9 +485,6 @@ class bartMachine(RObjectBase):
         super().__init__(**drop_none(kw))
 
         # fix up attributes
-        for name in self._null_components:
-            if getattr(self, name) is robjects.NULL:
-                setattr(self, name, None)
         for name, pytype in self._scalar_components:
             value = getattr(self, name)
             if value is not None:
