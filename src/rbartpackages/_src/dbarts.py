@@ -45,10 +45,17 @@ from rbartpackages._src.base import (
     String,
     drop_none,
     namedlist_to_dict,
+    require_r_package,
     rfunction,
     robjects_r,
     rproperty,
 )
+
+# 0.9-34 brought `updatePredictorPerObservationJointly` (resolved eagerly
+# below), the sampler's `getTrees`, `setPredictor`'s `forceUpdate` and
+# `extract`'s tree arguments. Checked here so an older dbarts says so, rather
+# than failing on whichever of those the module or the user reaches first.
+require_r_package('dbarts', '0.9-34')
 
 
 def to_formula(formula: object) -> object:

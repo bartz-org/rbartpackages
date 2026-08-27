@@ -16,7 +16,7 @@ Python wrappers of R BART (Bayesian Additive Regression Trees) packages, built o
 pip install rbartpackages
 ```
 
-You also need R with the package(s) you want to use installed (`BART`, `dbarts`, `bartMachine` from CRAN; `BART3` from `rsparapa/bnptools` and `missBART` from `yongchengoh/missBART` on GitHub). `bartMachine` additionally requires Java. If you install `polars`, dataframes are returned as `polars` dataframes instead of `pandas` dataframes. For convenience, you can install `polars` with `pip install 'rbartpackages[polars]'`. If you install `jax` (separately or with `pip install 'rbartpackages[jax]'`), jax arrays are accepted as input in place of numpy arrays, but output arrays remain numpy.
+You also need R with the latest version of the package(s) you want to use installed (`BART`, `dbarts`, `bartMachine` from CRAN; `BART3` from `rsparapa/bnptools` and `missBART` from `yongchengoh/missBART` on GitHub). `bartMachine` additionally requires Java. If you install `polars`, dataframes are returned as `polars` dataframes instead of `pandas` dataframes. For convenience, you can install `polars` with `pip install 'rbartpackages[polars]'`. If you install `jax` (separately or with `pip install 'rbartpackages[jax]'`), jax arrays are accepted as input in place of numpy arrays, but output arrays remain numpy.
 
 ## Usage
 

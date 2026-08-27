@@ -239,6 +239,10 @@ def namedlist_to_dict(namedlist: NamedList) -> dict[str, Any]:
 
 R_IDENTIFIER = r'(?:[a-zA-Z]|\.(?![0-9]))[a-zA-Z0-9._]*'
 
+# An R package version: numeric components separated by '.' or '-', which R
+# orders alike (so 0.9-34 sorts after 0.9-9 and before 0.10-1).
+R_VERSION = r'[0-9]+(?:[.-][0-9]+)*'
+
 # Type of a value living on the R side of the rpy2 boundary. It is genuinely
 # dynamic (what R hands back depends on the code), so it aliases `Any`: a checker
 # treats it as gradual rather than as the opaque top type `object`, on which no
@@ -600,3 +604,51 @@ def rfunction(
         return RObjectBase._r2py(out)  # noqa: SLF001, base-class access
 
     return impl
+
+
+def require_r_package(library: str, min_version: str) -> None:
+    """
+    Load an R package's namespace, requiring a minimum version.
+
+    The wrappers track the current release of each R package; a wrapper module
+    calls this at import time to declare the oldest version it supports, so
+    that an older installation fails immediately with a legible message instead
+    of at some arbitrary later point.
+
+    Parameters
+    ----------
+    library
+        The name of the R package.
+    min_version
+        The oldest supported version, written as R does (e.g. ``'0.9-34'``).
+        The comparison is R's own, which reads ``-`` and ``.`` alike as
+        component separators.
+
+    Raises
+    ------
+    ValueError
+        If `library` is not a valid R identifier, or `min_version` is not a
+        valid R version.
+    ImportError
+        If the installed `library` is older than `min_version`.
+
+    Examples
+    --------
+    >>> require_r_package('dbarts', '0.9-34')
+    """
+    if not fullmatch(R_IDENTIFIER, library):
+        msg = f'Invalid R package name: {library}'
+        raise ValueError(msg)
+    if not fullmatch(R_VERSION, min_version):
+        msg = f'Invalid R package version: {min_version}'
+        raise ValueError(msg)
+    robjects_r(f'loadNamespace("{library}")')
+    if not robjects_r(f'packageVersion("{library}") >= "{min_version}"')[0]:
+        # not `packageVersion`, which normalizes '-' to '.' when printed
+        version = robjects_r(f'packageDescription("{library}")$Version')[0]
+        msg = (
+            f'rbartpackages requires the R package {library} >= {min_version}, '
+            f'but version {version} is installed; update it with '
+            f'install.packages("{library}") in R.'
+        )
+        raise ImportError(msg)
