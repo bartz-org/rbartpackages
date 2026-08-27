@@ -28,6 +28,7 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import Parameter
+from typing import Literal, get_args, get_origin
 
 import numpy as np
 import pandas as pd
@@ -383,6 +384,13 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
 
     pred = fit.predict(data.test_frame, group_by=group[:m])
     assert pred.shape == (NDPOST, m)
+
+    # the random effects are reachable through the generics too, one column
+    # per group, and `fitted` averages the `extract` draws
+    ranef = fit.extract(type='ranef')
+    assert isinstance(ranef, np.ndarray)
+    assert_array_equal(ranef, fit.ranef)
+    assert_close_matrices(fit.fitted(type='ranef'), fit.ranef_mean, rtol=1e-7)
 
 
 def test_dbarts(data: Data) -> None:
@@ -803,6 +811,8 @@ GENERIC_CASES = [
         {'...'},
         set(),
     ),
+    (dbarts.rbart_vi.extract, 'extract', 'rbart', {'object'}, {'...'}, TREE_ARGS),
+    (dbarts.rbart_vi.fitted, 'fitted', 'rbart', {'object'}, {'...'}, set()),
 ]
 
 
@@ -825,7 +835,8 @@ def test_generic_signatures_match_r(
     (minus the dispatch arguments the wrapper fills itself) or be one of the
     arguments R takes through ``...``, every R argument must be exposed or
     deliberately unexposed, and the defaults vary with the fit, so the
-    signature defers each to R with ``None``.
+    signature defers each to R with ``None``. The quantities offered by
+    ``type`` differ per method, so its `Literal` must list R's own choices.
     """
     method = f'getS3method("{generic}", "{rclass}", envir = asNamespace("dbarts"))'
     rnames = set(robjects_r(f'names(formals({method}))')) - bound
@@ -834,6 +845,13 @@ def test_generic_signatures_match_r(
     assert rnames - params.keys() == unexposed
     for name, param in params.items():
         assert param.default is None, name
+
+    # `type` is annotated as `Literal[...] | None`, R's choices as a `c(...)`
+    # default that `evaluated_r_formals` evaluates to a character vector
+    literal = next(
+        arg for arg in get_args(params['type'].annotation) if get_origin(arg) is Literal
+    )
+    assert_array_equal(get_args(literal), evaluated_r_formals(method)['type'])
 
 
 # the sampler reference-class methods and the R arguments left unexposed

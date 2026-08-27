@@ -1721,3 +1721,82 @@ class rbart_vi(_BartBase):
             'combineChains': combineChains,
         }
         return self._call_rmethod('predict', newdata, **drop_none(kw))
+
+    def extract(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart', 'ranef', 'trees'] | None = None,  # noqa: A002 mirrors the R argument name
+        sample: Literal['train', 'test'] | None = None,
+        combineChains: bool | None = None,
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
+    ) -> Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | DataFrame:
+        """
+        Return the kept draws for the training (default) or test points.
+
+        As `bart.extract`, plus the random effects with ``type='ranef'``.
+
+        Parameters
+        ----------
+        type
+            Quantity returned: ``'ev'``, ``'ppd'``, ``'bart'``, ``'ranef'``
+            (the random effects, one column per group; see `predict`), or
+            ``'trees'`` for the tree structures.
+        sample
+            Which points to extract: ``'train'`` or ``'test'``; unusable with
+            ``type='trees'``.
+        combineChains
+            Whether the chains are stacked into the draws axis rather than
+            kept on a leading `nchain` axis; unusable with ``type='trees'``.
+        treeNums
+            1-based indices of the trees to return; ``type='trees'`` only.
+        chainNums
+            1-based indices of the chains to return; ``type='trees'`` only.
+        sampleNums
+            1-based indices of the samples to return; ``type='trees'`` only.
+        newdata
+            Predictors routed through the frozen trees, so that the ``n``
+            column counts those observations; ``type='trees'`` only.
+
+        Returns
+        -------
+        The draws at the requested points, or the tree-structure data frame with ``type='trees'``.
+        """
+        kw = {
+            'type': type,
+            'sample': sample,
+            'combineChains': combineChains,
+            'treeNums': treeNums,
+            'chainNums': chainNums,
+            'sampleNums': sampleNums,
+            'newdata': newdata,
+        }
+        return self._call_rmethod('extract', **drop_none(kw))
+
+    def fitted(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart', 'ranef'] | None = None,  # noqa: A002 mirrors the R argument name
+        sample: Literal['train', 'test'] | None = None,
+    ) -> Float64[ndarray, ' n']:
+        """
+        Return the posterior mean for the training (default) or test points.
+
+        As `bart.fitted`, plus the random effects with ``type='ranef'``.
+
+        Parameters
+        ----------
+        type
+            Quantity averaged: ``'ev'``, ``'ppd'``, ``'bart'``, or ``'ranef'``
+            (the random effects, one value per group; see `predict`).
+        sample
+            Which points to use: ``'train'`` or ``'test'``.
+
+        Returns
+        -------
+        The posterior mean at the requested points.
+        """
+        kw = {'type': type, 'sample': sample}
+        return self._call_rmethod('fitted', **drop_none(kw))
