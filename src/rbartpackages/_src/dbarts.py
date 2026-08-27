@@ -968,7 +968,11 @@ class _BartBase(RObjectBase):
         chainNums: int | Integer[ndarray, ' c'] | None = None,
         sampleNums: int | Integer[ndarray, ' s'] | None = None,
         newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
-    ) -> Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | DataFrame:
+    ) -> (
+        Float64[ndarray, 'ndpost n_or_m']
+        | Float64[ndarray, 'nchain ndpost n_or_m']
+        | DataFrame
+    ):
         """
         Return the kept draws for the training (default) or test points.
 
@@ -1018,7 +1022,7 @@ class _BartBase(RObjectBase):
         *,
         type: Literal['ev', 'ppd', 'bart'] | None = None,  # noqa: A002 mirrors the R argument name
         sample: Literal['train', 'test'] | None = None,
-    ) -> Float64[ndarray, ' n']:
+    ) -> Float64[ndarray, ' n_or_m']:
         """
         Return the posterior mean for the training (default) or test points.
 
@@ -1686,7 +1690,12 @@ class rbart_vi(_BartBase):
         offset: Float64[ndarray, ' m'] | float | None = None,
         type: Literal['ev', 'ppd', 'bart', 'ranef'] | None = None,  # noqa: A002 mirrors the R argument name
         combineChains: bool | None = None,
-    ) -> Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m']:
+    ) -> (
+        Float64[ndarray, 'ndpost m']
+        | Float64[ndarray, 'nchain ndpost m']
+        | Float64[ndarray, 'ndpost g']
+        | Float64[ndarray, 'nchain ndpost g']
+    ):
         """
         Compute predictions at new points; requires a ``keepTrees=True`` fit.
 
@@ -1705,7 +1714,7 @@ class rbart_vi(_BartBase):
         type
             Quantity returned: ``'ev'`` (expected value), ``'ppd'`` (posterior
             predictive), ``'bart'`` (the latent sum-of-trees), or ``'ranef'``
-            (the random effects).
+            (the random effects, one column per `group_by` level).
         combineChains
             Whether the chains are stacked into the draws axis rather than
             kept on a leading `nchain` axis.
@@ -1732,7 +1741,11 @@ class rbart_vi(_BartBase):
         chainNums: int | Integer[ndarray, ' c'] | None = None,
         sampleNums: int | Integer[ndarray, ' s'] | None = None,
         newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
-    ) -> Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | DataFrame:
+    ) -> (
+        Float64[ndarray, 'ndpost n_or_m_or_g']
+        | Float64[ndarray, 'nchain ndpost n_or_m_or_g']
+        | DataFrame
+    ):
         """
         Return the kept draws for the training (default) or test points.
 
@@ -1780,7 +1793,7 @@ class rbart_vi(_BartBase):
         *,
         type: Literal['ev', 'ppd', 'bart', 'ranef'] | None = None,  # noqa: A002 mirrors the R argument name
         sample: Literal['train', 'test'] | None = None,
-    ) -> Float64[ndarray, ' n']:
+    ) -> Float64[ndarray, ' n_or_m_or_g']:
         """
         Return the posterior mean for the training (default) or test points.
 
@@ -1796,7 +1809,7 @@ class rbart_vi(_BartBase):
 
         Returns
         -------
-        The posterior mean at the requested points.
+        The posterior mean at the requested points, or per group with ``type='ranef'``.
         """
         kw = {'type': type, 'sample': sample}
         return self._call_rmethod('fitted', **drop_none(kw))
