@@ -31,10 +31,13 @@ SOFTWARE.
 # Changelog
 
 
-## 0.2.1 Bayesian Alien Radioactive Tacos (2026-08-25)
+## 0.3.0 Bayesian Alien Radioactive Tacos (2026-08-25)
 
 - typing fixes
+- fix bugs in dbarts wrapper
 - update dbarts wrapper for changes in dbarts
+- explicitly pin dbarts >= 0.9-34
+- state policy that only latest versions of R packages are supported
 
 
 ## 0.2.0 Baruch's Algorithm for Recursive Trainspotting (2026-06-25)
