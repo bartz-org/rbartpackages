@@ -3061,7 +3061,7 @@ jax = [
     { name = "jax", version = "0.11.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 polars = [
-    { name = "polars" },
+    { name = "polars", extra = ["pyarrow"] },
 ]
 
 [package.dev-dependencies]
@@ -3104,7 +3104,7 @@ requires-dist = [
     { name = "jaxtyping", specifier = ">=0.3.2" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "pandas", specifier = ">=2.3.2" },
-    { name = "polars", marker = "extra == 'polars'", specifier = ">=1.32.3" },
+    { name = "polars", extras = ["pyarrow"], marker = "extra == 'polars'", specifier = ">=1.32.3" },
     { name = "rpy2", specifier = ">=3.6.2" },
     { name = "typing-extensions", specifier = ">=4.14.1" },
 ]

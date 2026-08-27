@@ -47,7 +47,7 @@ dependencies = [
 [project.optional-dependencies]
 # Each extra backs a soft-imported converter in `rbartpackages.base`.
 jax = ["jax>=0.6.2"]
-polars = ["polars>=1.32.3"]
+polars = ["polars[pyarrow]>=1.32.3"]
 pandas = []  # keep for backward compatibility
 
 [project.urls]
