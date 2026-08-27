@@ -50,8 +50,8 @@ Data frames
 -----------
 
 R dataframes are converted to/from `pandas` dataframes on the Python side. If
-`polars` is installed, dataframes are returned as `polars` dataframes, and both
-`pandas` and `polars` dataframes are accepted as input.
+`polars[pyarrow]` is installed, dataframes are returned as `polars` dataframes,
+and both `pandas` and `polars` dataframes are accepted as input.
 
 R documentation
 ---------------

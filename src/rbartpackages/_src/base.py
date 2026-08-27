@@ -61,7 +61,10 @@ PANDAS_CONVERTER = pandas2ri.converter
 POLARS_CONVERTER = conversion.Converter('polars')
 try:
     import polars as pl
-except ImportError:  # pragma: no cover - optional dep always present in CI
+
+    # the polars <-> pandas conversions below go through Arrow
+    import pyarrow as pa  # noqa: F401, imported only to check it is installed
+except ImportError:  # pragma: no cover - optional deps always present in CI
     pass
 else:
 
@@ -170,7 +173,8 @@ class DataFrame(Protocol):
     Both `pandas.DataFrame` and :doc:`polars.DataFrame
     <polars:reference/dataframe/index>` match; they are converted to R data
     frames, with categorical columns becoming factors. The wrappers that return
-    a data frame return a polars one if polars is installed, else a pandas one.
+    a data frame return a polars one if polars and pyarrow are installed, else
+    a pandas one.
     """
 
     def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:

@@ -43,7 +43,7 @@ To install the latest development version:
     pip install git+https://github.com/bartz-org/rbartpackages.git
 
 The wrappers that return a data frame return a pandas one by default. If
-`polars` is installed, output dataframes switch to polars. If `jax` is
+`polars[pyarrow]` is installed, output dataframes switch to polars. If `jax` is
 installed, jax arrays are accepted as input arrays, but output arrays remain
 numpy. Two extras are provided for convenience to install these packages
 alongside `rbartpackages`:
