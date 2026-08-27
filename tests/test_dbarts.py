@@ -594,8 +594,8 @@ def test_dbarts_setters_column(data: Data) -> None:
     assert_array_equal(slot('x.test')[:, :2], pair_test)
 
 
-def test_dbarts_setters_clear_offset(data: Data) -> None:
-    """``None`` clears the offsets instead of being rejected by the converter."""
+def test_dbarts_setters_clear(data: Data) -> None:
+    """``None`` clears the offsets and the test predictors."""
     n, _ = data.x.shape
     control = dbarts.dbartsControl(
         n_trees=NTREE, n_chains=1, n_threads=1, n_samples=NDPOST
@@ -620,6 +620,26 @@ def test_dbarts_setters_clear_offset(data: Data) -> None:
     assert not is_null('offset.test')
     sampler.setTestPredictorAndOffset(data.x_test, None)
     assert is_null('offset.test')
+
+    sampler.setTestPredictor(data.x_test)
+    assert not is_null('x.test')
+    sampler.setTestPredictor(None)
+    assert is_null('x.test')
+
+    # clearing the test matrix and its offset together is the supported way
+    sampler.setTestPredictorAndOffset(data.x_test, 0.0)
+    assert not is_null('x.test')
+    sampler.setTestPredictorAndOffset(None, None)
+    assert is_null('x.test')
+    assert is_null('offset.test')
+
+    # R rejects the leftovers: a column has no NULL meaning, and a NULL test
+    # matrix cannot keep an offset
+    sampler.setTestPredictor(data.x_test)
+    with pytest.raises(RRuntimeError, match='length of new x does not match'):
+        sampler.setTestPredictor(None, 1)
+    with pytest.raises(RRuntimeError, match='test offset must be'):
+        sampler.setTestPredictorAndOffset(None, 0.0)
 
 
 def test_dbarts_get_trees(data: Data) -> None:

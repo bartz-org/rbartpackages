@@ -667,7 +667,7 @@ class dbarts(RObjectBase):
 
     def setTestPredictor(
         self,
-        x_test: Float64[ndarray, 'm cols'] | Float64[ndarray, ' m'],
+        x_test: Float64[ndarray, 'm cols'] | Float64[ndarray, ' m'] | None,
         column: int | str | Integer[ndarray, ' cols'] | None = None,
     ) -> None:
         """
@@ -677,7 +677,8 @@ class dbarts(RObjectBase):
         ----------
         x_test
             The replacement test predictors: a whole matrix, or the values of
-            the columns selected by `column`.
+            the columns selected by `column`, or ``None`` to clear the test
+            data (not allowed with `column`).
         column
             The 1-based index or name of a single column, or an array of
             indices for several columns; the whole matrix is replaced if
@@ -685,11 +686,12 @@ class dbarts(RObjectBase):
             names, and works one column at a time.
         """
         args = () if column is None else (column,)
-        self._call_rmethod('setTestPredictor', x_test, *args)
+        x_test_arg = robjects.NULL if x_test is None else x_test
+        self._call_rmethod('setTestPredictor', x_test_arg, *args)
 
     def setTestPredictorAndOffset(
         self,
-        x_test: Float64[ndarray, 'm p'],
+        x_test: Float64[ndarray, 'm p'] | None,
         offset_test: Float64[ndarray, ' m'] | float | None,
     ) -> None:
         """
@@ -698,13 +700,15 @@ class dbarts(RObjectBase):
         Parameters
         ----------
         x_test
-            The replacement test predictor matrix.
+            The replacement test predictor matrix, or ``None`` to clear the
+            test data (then `offset_test` must be ``None`` as well).
         offset_test
             The replacement test offset (a scalar is expanded to all test
             points), or ``None`` to clear it.
         """
+        x_test_arg = robjects.NULL if x_test is None else x_test
         offset_arg = robjects.NULL if offset_test is None else offset_test
-        self._call_rmethod('setTestPredictorAndOffset', x_test, offset_arg)
+        self._call_rmethod('setTestPredictorAndOffset', x_test_arg, offset_arg)
 
     def setTestOffset(self, offset_test: Float64[ndarray, ' m'] | float | None) -> None:
         """
