@@ -385,6 +385,19 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
     pred = fit.predict(data.test_frame, group_by=group[:m])
     assert pred.shape == (NDPOST, m)
 
+    # `type='ranef'` gives the draws of the random effects of the groups of
+    # the new points, one column per group
+    test_group = group[:m]
+    test_levels = np.unique(test_group)
+    ranef_pred = fit.predict(data.test_frame, group_by=test_group, type='ranef')
+    assert ranef_pred.shape == (NDPOST, test_levels.size)
+    columns = np.searchsorted(np.unique(group), test_levels)
+    assert_array_equal(ranef_pred, fit.ranef[:, columns])
+    single = fit.predict(
+        data.test_frame, group_by=np.full(m, test_group[0]), type='ranef'
+    )
+    assert single.shape == (NDPOST, 1)
+
     # the random effects are reachable through the generics too, one column
     # per group, and `fitted` averages the `extract` draws
     ranef = fit.extract(type='ranef')

@@ -82,6 +82,13 @@ def to_named_vector(value: object) -> object:
     return value
 
 
+def to_factor(value: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None) -> object:
+    """Convert a grouping argument to an R factor; pass ``None`` through."""
+    if value is None:
+        return None
+    return robjects_r('factor')(RObjectBase._py2r(value))  # noqa: SLF001, base-class access
+
+
 class dbartsControl(RObjectBase):
     """
     Configure a `dbarts` sampler.
@@ -1724,7 +1731,12 @@ class rbart_vi(_BartBase):
         The predictions at `newdata`, on the expected-value scale unless ``type`` says otherwise.
         """
         kw = {
-            'group.by': group_by,
+            # convert `group_by` to an R factor because, when type='ranef',
+            # dbarts parses it with `levels(group.by)`, which is NULL for a
+            # plain character or integer vector, silently selecting no group at
+            # all; the other types use `as.character(group.by)` which already
+            # works fine but accepts a factor anyway
+            'group.by': to_factor(group_by),
             'offset': offset,
             'type': type,
             'combineChains': combineChains,
