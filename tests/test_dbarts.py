@@ -351,10 +351,12 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
     By default it keeps the per-chain samplers, so `predict` works; new
     points need a group each.
     """
+    # draw group membership for random effects
     n, _ = data.x.shape
-    m, _ = data.x_test.shape
-    group = rng.integers(0, 3, n)
-    n_groups = np.unique(group).size
+    # case-mixed names to trigger R/numpy differences in sorting due to locale
+    group = np.array(['B', 'a', 'b'])[rng.integers(0, 3, n)]
+
+    # run rbart_vi
     fit = dbarts.rbart_vi(
         'y ~ x1 + x2 + x3',
         data=data.frame,
@@ -367,9 +369,13 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
         n_thin=1,
         verbose=False,
     )
+
+    # check shapes and types
     assert nnone(fit.yhat_train).shape == (NDPOST, n)
+    n_groups = np.unique(group).size
     assert fit.ranef.shape == (NDPOST, n_groups)
     assert fit.ranef_mean.shape == (n_groups,)
+    assert_array_equal(np.sort(fit.ranef_levels), np.unique(group))
     assert fit.tau.shape == (NDPOST,)
     assert fit.first_tau.shape == (NSKIP,)
     assert nnone(fit.sigma).shape == (NDPOST,)
@@ -379,31 +385,43 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
     assert isinstance(sampler, dbarts.dbarts)
     assert fit.n_chains is None
     assert fit.seed.dtype == np.int32  # an R .Random.seed vector
-    assert_array_equal(fit.group_by, group.astype(str), strict=False)
+    assert_array_equal(fit.group_by, group)
     assert_array_equal(fit.y, data.y)
 
+    # check shape of predictions
+    m, _ = data.x_test.shape
     pred = fit.predict(data.test_frame, group_by=group[:m])
     assert pred.shape == (NDPOST, m)
 
-    # `type='ranef'` gives the draws of the random effects of the groups of
-    # the new points, one column per group
-    test_group = group[:m]
+    # check shape of predicted random effects requesting 2 out of 3 groups
+    test_group = np.resize(np.array(['b', 'B']), m)
     test_levels = np.unique(test_group)
     ranef_pred = fit.predict(data.test_frame, group_by=test_group, type='ranef')
     assert ranef_pred.shape == (NDPOST, test_levels.size)
-    columns = np.searchsorted(np.unique(group), test_levels)
+
+    # check the returned groups are those we requested
+    columns = np.isin(fit.ranef_levels, test_levels)
     assert_array_equal(ranef_pred, fit.ranef[:, columns])
+
+    # check shape of predicted random effects requesting 1 out of 3 groups
     single = fit.predict(
         data.test_frame, group_by=np.full(m, test_group[0]), type='ranef'
     )
     assert single.shape == (NDPOST, 1)
 
-    # the random effects are reachable through the generics too, one column
-    # per group, and `fitted` averages the `extract` draws
+    # check the returned group is the one we requested; together with the
+    # analogous check above on the size-2 subset, this fully checks that the
+    # ordering of groups is the one given by `fit.ranef_levels`
+    (column,) = np.flatnonzero(fit.ranef_levels == test_group[0])
+    assert_array_equal(single.squeeze(-1), fit.ranef[:, column])
+
+    # check the random effects returned by methods match those in the
+    # attributes, without any selection
     ranef = fit.extract(type='ranef')
     assert isinstance(ranef, np.ndarray)
     assert_array_equal(ranef, fit.ranef)
-    assert_close_matrices(fit.fitted(type='ranef'), fit.ranef_mean, rtol=1e-7)
+    ranef_mean = fit.fitted(type='ranef')
+    assert_close_matrices(ranef_mean, fit.ranef_mean, rtol=1e-15)
 
 
 def test_dbarts(data: Data) -> None:
