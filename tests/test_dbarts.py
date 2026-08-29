@@ -739,6 +739,7 @@ def test_update_predictor_jointly(data: Data) -> None:
     installed = dbarts.updatePredictorPerObservationJointly([first, second], new, 'x1')
     assert installed.shape == (n,)
     assert installed.dtype == np.bool_
+    assert installed.any()
     for sampler, index in [(first, 0), (second, 1)]:
         x = np.asarray(robjects_r('function(d) d@x')(sampler.data._robject))
         assert_array_equal(x[installed, index], new[installed])
