@@ -375,7 +375,8 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
     n_groups = np.unique(group).size
     assert fit.ranef.shape == (NDPOST, n_groups)
     assert fit.ranef_mean.shape == (n_groups,)
-    assert_array_equal(np.sort(fit.ranef_levels), np.unique(group))
+    levels = fit.ranef_levels()
+    assert_array_equal(np.sort(levels), np.unique(group))
     assert fit.tau.shape == (NDPOST,)
     assert fit.first_tau.shape == (NSKIP,)
     assert nnone(fit.sigma).shape == (NDPOST,)
@@ -400,7 +401,7 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
     assert ranef_pred.shape == (NDPOST, test_levels.size)
 
     # check the returned groups are those we requested
-    columns = np.isin(fit.ranef_levels, test_levels)
+    columns = np.isin(levels, test_levels)
     assert_array_equal(ranef_pred, fit.ranef[:, columns])
 
     # check shape of predicted random effects requesting 1 out of 3 groups
@@ -411,9 +412,29 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
 
     # check the returned group is the one we requested; together with the
     # analogous check above on the size-2 subset, this fully checks that the
-    # ordering of groups is the one given by `fit.ranef_levels`
-    (column,) = np.flatnonzero(fit.ranef_levels == test_group[0])
+    # ordering of groups is the one given by `fit.ranef_levels()`
+    (column,) = np.flatnonzero(levels == test_group[0])
     assert_array_equal(single.squeeze(-1), fit.ranef[:, column])
+
+    # check a group not seen in training gets a new independent effect drawn
+    # from the prior, placed by level order rather than appended ('a' < 'aa' <
+    # 'b' in any collation, so R and numpy agree on the order here)
+    new_group = np.resize(np.array(['a', 'aa', 'b']), m)
+    new_levels = fit.ranef_levels(new_group)
+    assert_array_equal(new_levels, np.array(['a', 'aa', 'b']))
+    new_ranef = fit.predict(data.test_frame, group_by=new_group, type='ranef')
+    assert new_ranef.shape == (NDPOST, new_levels.size)
+
+    # the trained groups keep their effects, in place around the new one
+    for index, level in enumerate(new_levels):
+        trained = np.flatnonzero(levels == level)
+        if trained.size:
+            assert_array_equal(new_ranef[:, index], fit.ranef[:, trained.item()])
+        else:
+            assert not any(
+                np.array_equal(new_ranef[:, index], fit.ranef[:, other])
+                for other in range(n_groups)
+            )
 
     # check the random effects returned by methods match those in the
     # attributes, without any selection

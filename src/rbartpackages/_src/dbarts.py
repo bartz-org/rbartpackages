@@ -1589,18 +1589,10 @@ class rbart_vi(_BartBase):
     """The test grouping factor, if given."""
 
     ranef: Float64[ndarray, 'ndpost g'] | Float64[ndarray, 'nchain ndpost g']
-    """Random-intercept draws for each of the `g` groups."""
-
-    ranef_levels: String[ndarray, ' g']
-    """The `group_by` levels labelling the `g` axis of `ranef` and `ranef_mean`.
-
-    This attribute is missing in the original `rbart_vi` object. In R, level
-    names come out as column names in the output matrices. Numpy arrays do not
-    carry column names, so they are provided in this separate attribute.
-    """
+    """Random-intercept draws for each of the `g` groups; see `ranef_levels`."""
 
     ranef_mean: Float64[ndarray, ' g']
-    """Posterior mean of `ranef` per group."""
+    """Posterior mean of `ranef` per group; see `ranef_levels`."""
 
     seed: Int32[ndarray, ' state']
     """R RNG state used by `predict` to draw the effects of unseen groups."""
@@ -1692,16 +1684,38 @@ class rbart_vi(_BartBase):
         RObjectBase.__init__(self, **drop_none(kw))
         self._postprocess()
 
-    def _postprocess(self) -> None:
-        """Normalize the fit as `_BartBase`, plus label the random-effect axis."""
-        super()._postprocess()
-        ranef_mean = robjects_r['$'](self._robject, 'ranef.mean')
-        self.ranef_levels = self._r2py(robjects_r('names')(ranef_mean))
-
     def _wrap_fit(self) -> None:
         """Wrap the R list of per-chain samplers in the `dbarts` interface."""
         if self.fit is not None:
             self.fit = tuple(map(dbarts._wrap, cast(NamedList, self.fit)))  # noqa: SLF001, base-class access
+
+    def ranef_levels(
+        self, group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None = None
+    ) -> String[ndarray, ' g']:
+        """
+        Label the group axis of the random effects.
+
+        In R the level names come out as column names of the random-effect
+        matrices; numpy arrays do not carry them, so they are obtained here.
+        The levels are sorted by R, whose collation may differ from numpy's.
+
+        Parameters
+        ----------
+        group_by
+            The grouping factor labelling the axis: ``None`` for the training
+            one, as used by `ranef`, `ranef_mean`, ``extract(type='ranef')``
+            and ``fitted(type='ranef')``; otherwise the grouping passed to
+            `predict` or as `group_by_test`.
+
+        Returns
+        -------
+        The level names, in the order they label the group axis.
+        """
+        if group_by is None:
+            ranef_mean = robjects_r['$'](self._robject, 'ranef.mean')
+            return self._r2py(robjects_r('names')(ranef_mean))
+        else:
+            return self._r2py(robjects_r('levels')(to_factor(group_by)))
 
     def predict(
         self,
@@ -1728,15 +1742,18 @@ class rbart_vi(_BartBase):
         newdata
             New predictors, with the same column structure as `x_train`.
         group_by
-            Grouping factor of the new points; out-of-sample groups draw
-            new independent random effects.
+            Grouping factor of the new points; groups not seen in training get
+            new independent effects drawn from the prior, i.e., zero-mean
+            Gaussian with the posterior draw of `tau` as standard deviation.
         offset
             Offset added to the predictions.
         type
             Quantity returned: ``'ev'`` (expected value), ``'ppd'`` (posterior
             predictive), ``'bart'`` (the latent sum-of-trees), or ``'ranef'``
             (the random effects, one column per level of the `group_by` passed
-            here, in the level order described in `ranef_levels`).
+            here, labelled by ``ranef_levels(group_by)``; levels absent from
+            training keep their place in that order, so the labels need not be
+            a subset of the training ones).
         combineChains
             Whether the chains are stacked into the draws axis rather than
             kept on a leading `nchain` axis.
@@ -1783,7 +1800,8 @@ class rbart_vi(_BartBase):
         type
             Quantity returned: ``'ev'``, ``'ppd'``, ``'bart'``, ``'ranef'``
             (the random effects, one column per level of the `sample`'s
-            grouping factor; see `ranef_levels`), or ``'trees'`` for the tree
+            grouping factor, labelled by ``ranef_levels()`` or
+            ``ranef_levels(group_by_test)``), or ``'trees'`` for the tree
             structures.
         sample
             Which points to extract: ``'train'`` or ``'test'``; unusable with
@@ -1832,7 +1850,7 @@ class rbart_vi(_BartBase):
         type
             Quantity averaged: ``'ev'``, ``'ppd'``, ``'bart'``, or ``'ranef'``
             (the random effects, one value per level of the `sample`'s grouping
-            factor; see `ranef_levels`).
+            factor, labelled as in `extract`).
         sample
             Which points to use: ``'train'`` or ``'test'``.
 
