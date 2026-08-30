@@ -52,6 +52,7 @@ Supporting types
 .. autosummary::
     :toctree:
 
+    Ranef
     RunSamples
 """
 
@@ -59,6 +60,7 @@ Supporting types
 # ruff: noqa: F401
 
 from rbartpackages._src.dbarts import (
+    Ranef,
     RunSamples,
     bart,
     bart2,

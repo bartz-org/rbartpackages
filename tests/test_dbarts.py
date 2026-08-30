@@ -375,8 +375,7 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
     n_groups = np.unique(group).size
     assert fit.ranef.shape == (NDPOST, n_groups)
     assert fit.ranef_mean.shape == (n_groups,)
-    levels = fit.ranef_levels()
-    assert_array_equal(np.sort(levels), np.unique(group))
+    assert_array_equal(np.sort(fit.ranef_levels), np.unique(group))
     assert fit.tau.shape == (NDPOST,)
     assert fit.first_tau.shape == (NSKIP,)
     assert nnone(fit.sigma).shape == (NDPOST,)
@@ -397,37 +396,43 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
     # check shape of predicted random effects requesting 2 out of 3 groups
     test_group = np.resize(np.array(['b', 'B']), m)
     test_levels = np.unique(test_group)
-    ranef_pred = fit.predict(data.test_frame, group_by=test_group, type='ranef')
+    ranef_pred, pred_levels = fit.predict(
+        data.test_frame, group_by=test_group, type='ranef'
+    )
     assert ranef_pred.shape == (NDPOST, test_levels.size)
 
-    # check the returned groups are those we requested
-    columns = np.isin(levels, test_levels)
+    # check the returned groups are those we requested, and that the names
+    # coming with them place the columns within the training ones
+    columns = np.isin(fit.ranef_levels, pred_levels)
+    assert_array_equal(pred_levels, fit.ranef_levels[columns])
     assert_array_equal(ranef_pred, fit.ranef[:, columns])
 
     # check shape of predicted random effects requesting 1 out of 3 groups
-    single = fit.predict(
+    single, single_levels = fit.predict(
         data.test_frame, group_by=np.full(m, test_group[0]), type='ranef'
     )
     assert single.shape == (NDPOST, 1)
 
     # check the returned group is the one we requested; together with the
     # analogous check above on the size-2 subset, this fully checks that the
-    # ordering of groups is the one given by `fit.ranef_levels()`
-    (column,) = np.flatnonzero(levels == test_group[0])
+    # ordering of groups is the one given by the returned names
+    assert_array_equal(single_levels, test_group[:1])
+    (column,) = np.flatnonzero(fit.ranef_levels == test_group[0])
     assert_array_equal(single.squeeze(-1), fit.ranef[:, column])
 
     # check a group not seen in training gets a new independent effect drawn
     # from the prior, placed by level order rather than appended ('a' < 'aa' <
     # 'b' in any collation, so R and numpy agree on the order here)
     new_group = np.resize(np.array(['a', 'aa', 'b']), m)
-    new_levels = fit.ranef_levels(new_group)
+    new_ranef, new_levels = fit.predict(
+        data.test_frame, group_by=new_group, type='ranef'
+    )
     assert_array_equal(new_levels, np.array(['a', 'aa', 'b']))
-    new_ranef = fit.predict(data.test_frame, group_by=new_group, type='ranef')
     assert new_ranef.shape == (NDPOST, new_levels.size)
 
     # the trained groups keep their effects, in place around the new one
     for index, level in enumerate(new_levels):
-        trained = np.flatnonzero(levels == level)
+        trained = np.flatnonzero(fit.ranef_levels == level)
         if trained.size:
             assert_array_equal(new_ranef[:, index], fit.ranef[:, trained.item()])
         else:
@@ -436,13 +441,62 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
                 for other in range(n_groups)
             )
 
-    # check the random effects returned by methods match those in the
-    # attributes, without any selection
-    ranef = fit.extract(type='ranef')
-    assert isinstance(ranef, np.ndarray)
-    assert_array_equal(ranef, fit.ranef)
-    ranef_mean = fit.fitted(type='ranef')
-    assert_close_matrices(ranef_mean, fit.ranef_mean, rtol=1e-15)
+
+def test_rbart_vi_group_level_order(data: Data) -> None:
+    """The group names follow R's level order, not numpy's sorting of the labels.
+
+    R orders the levels of a numeric grouping numerically, but the grouping
+    comes back to Python as its string labels, which sort differently; the
+    names must be read from R rather than recomputed from `group_by`.
+    """
+    # define groups and run `rbart_vi`
+    n, _ = data.x.shape
+    m, _ = data.x_test.shape
+    # '10' sorts before '2' as a string, after it as a number
+    groups = np.array([2, 3, 10])
+    test_groups = groups[[0, 2]]
+    fit = dbarts.rbart_vi(
+        'y ~ x1 + x2 + x3',
+        data=data.frame,
+        group_by=np.resize(groups, n),
+        test=data.test_frame,
+        group_by_test=np.resize(test_groups, m),
+        n_trees=NTREE,
+        n_burn=NSKIP,
+        n_samples=NDPOST,
+        n_chains=1,
+        n_threads=1,
+        n_thin=1,
+        verbose=False,
+    )
+
+    # the training names keep R's numeric ordering
+    expected = np.array(['2', '3', '10'])
+    assert_array_equal(fit.ranef_levels, expected)
+    assert_array_equal(np.sort(expected), np.array(['10', '2', '3']))
+
+    # the training methods return the attributes as they are, with those names
+    train_ranef, train_levels = fit.extract(type='ranef')
+    assert_array_equal(train_ranef, fit.ranef)
+    assert_array_equal(train_levels, expected)
+    train_mean, train_mean_levels = fit.fitted(type='ranef')
+    assert_close_matrices(train_mean, fit.ranef_mean, rtol=1e-15)
+    assert_array_equal(train_mean_levels, expected)
+
+    # the test sample has its own level set, likewise in R's order, and the
+    # columns it selects follow those names
+    ranef, levels = fit.extract(type='ranef', sample='test')
+    assert_array_equal(levels, np.array(['2', '10']))
+    assert_array_equal(ranef, fit.ranef[:, [0, 2]])
+    ranef_mean, mean_levels = fit.fitted(type='ranef', sample='test')
+    assert_array_equal(mean_levels, levels)
+    assert_close_matrices(ranef_mean, fit.ranef_mean[[0, 2]], rtol=1e-15)
+
+    # `predict` labels its own result, whatever the grouping it is given
+    _, pred_levels = fit.predict(
+        data.test_frame, group_by=np.resize(groups, m), type='ranef'
+    )
+    assert_array_equal(pred_levels, expected)
 
 
 def test_dbarts(data: Data) -> None:

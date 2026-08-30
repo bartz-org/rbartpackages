@@ -26,7 +26,7 @@
 
 from collections.abc import Sequence
 from functools import partial
-from typing import Literal, cast, no_type_check
+from typing import Literal, NamedTuple, cast, no_type_check, overload
 
 from jaxtyping import Bool, Float64, Int32, Integer
 from numpy import ndarray
@@ -34,7 +34,7 @@ from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 from rpy2.robjects.language import LangVector
 from rpy2.robjects.methods import RS4
-from rpy2.robjects.vectors import ListVector
+from rpy2.robjects.vectors import FactorVector, ListVector
 
 # WORKAROUND(python<3.11): import NotRequired, Self, TypedDict from typing
 from typing_extensions import NotRequired, Self, TypedDict
@@ -82,7 +82,9 @@ def to_named_vector(value: object) -> object:
     return value
 
 
-def to_factor(value: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None) -> object:
+def to_factor(
+    value: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None,
+) -> FactorVector | None:
     """Convert a grouping argument to an R factor; pass ``None`` through."""
     if value is None:
         return None
@@ -275,6 +277,26 @@ class RunSamples(TypedDict):
 
     varcount: Int32[ndarray, 'p ndpost'] | Int32[ndarray, 'p ndpost nchain']
     """Per-draw count of splits on each variable, summed over trees."""
+
+
+class Ranef(NamedTuple):
+    """
+    Type of the ``type='ranef'`` return values of `rbart_vi`'s methods.
+
+    This is a tuple, so you can unpack it as ``values, levels = ...``. It
+    carries group names along with an array, providing a Python-side equivalent
+    to R's `colnames`.
+    """
+
+    values: (
+        Float64[ndarray, ' g']
+        | Float64[ndarray, 'ndpost g']
+        | Float64[ndarray, 'nchain ndpost g']
+    )
+    """The random effects, with the `g` groups on the last axis."""
+
+    levels: String[ndarray, ' g']
+    """The group names in the order of the group axis 'g' in `values`."""
 
 
 class dbarts(RObjectBase):
@@ -1589,10 +1611,13 @@ class rbart_vi(_BartBase):
     """The test grouping factor, if given."""
 
     ranef: Float64[ndarray, 'ndpost g'] | Float64[ndarray, 'nchain ndpost g']
-    """Random-intercept draws for each of the `g` groups; see `ranef_levels`."""
+    """Random-intercept draws for each of the `g` groups, labelled by `ranef_levels`."""
+
+    ranef_levels: String[ndarray, ' g']
+    """Names of the training groups, labelling the last axis of `ranef` and `ranef_mean`."""
 
     ranef_mean: Float64[ndarray, ' g']
-    """Posterior mean of `ranef` per group; see `ranef_levels`."""
+    """Posterior mean of `ranef` per group, labelled by `ranef_levels`."""
 
     seed: Int32[ndarray, ' state']
     """R RNG state used by `predict` to draw the effects of unseen groups."""
@@ -1684,38 +1709,52 @@ class rbart_vi(_BartBase):
         RObjectBase.__init__(self, **drop_none(kw))
         self._postprocess()
 
+    def _postprocess(self) -> None:
+        """Normalize the fit's R components, and read the training level names."""
+        super()._postprocess()
+        self.ranef_levels = self._ranef_levels('train')
+
     def _wrap_fit(self) -> None:
         """Wrap the R list of per-chain samplers in the `dbarts` interface."""
         if self.fit is not None:
             self.fit = tuple(map(dbarts._wrap, cast(NamedList, self.fit)))  # noqa: SLF001, base-class access
 
-    def ranef_levels(
-        self, group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None = None
-    ) -> String[ndarray, ' g']:
+    def _ranef_levels(self, sample: Literal['train', 'test']) -> String[ndarray, ' g']:
         """
-        Label the group axis of the random effects.
+        Read the names labelling the `sample`'s random-effect axis off the R fit.
 
-        In R the level names come out as column names of the random-effect
-        matrices; numpy arrays do not carry them, so they are obtained here.
-        The levels are sorted by R, whose collation may differ from numpy's.
-
-        Parameters
-        ----------
-        group_by
-            The grouping factor labelling the axis: ``None`` for the training
-            one, as used by `ranef`, `ranef_mean`, ``extract(type='ranef')``
-            and ``fitted(type='ranef')``; otherwise the grouping passed to
-            `predict` or as `group_by_test`.
-
-        Returns
-        -------
-        The level names, in the order they label the group axis.
+        R orders that axis by the levels of the sample's grouping factor, so
+        the names are taken from the factor itself rather than recomputed from
+        the converted `group_by`/`group_by_test`, whose conversion to numpy
+        strings drops the level order.
         """
-        if group_by is None:
-            ranef_mean = robjects_r['$'](self._robject, 'ranef.mean')
-            return self._r2py(robjects_r('names')(ranef_mean))
-        else:
-            return self._r2py(robjects_r('levels')(to_factor(group_by)))
+        rname = 'group.by' if sample == 'train' else 'group.by.test'
+        factor = robjects_r['$'](self._robject, rname)
+        return self._r2py(robjects_r('levels')(factor))
+
+    # the overloads keep `type='ranef'`, the only case with a group axis to
+    # label, from widening the return type of the other cases
+    @overload
+    def predict(
+        self,
+        newdata: Float64[ndarray, 'm p'] | DataFrame,
+        *,
+        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None = None,
+        offset: Float64[ndarray, ' m'] | float | None = None,
+        type: Literal['ranef'],
+        combineChains: bool | None = None,
+    ) -> Ranef: ...
+
+    @overload
+    def predict(
+        self,
+        newdata: Float64[ndarray, 'm p'] | DataFrame,
+        *,
+        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None = None,
+        offset: Float64[ndarray, ' m'] | float | None = None,
+        type: Literal['ev', 'ppd', 'bart'] | None = None,
+        combineChains: bool | None = None,
+    ) -> Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m']: ...
 
     def predict(
         self,
@@ -1725,12 +1764,7 @@ class rbart_vi(_BartBase):
         offset: Float64[ndarray, ' m'] | float | None = None,
         type: Literal['ev', 'ppd', 'bart', 'ranef'] | None = None,  # noqa: A002 mirrors the R argument name
         combineChains: bool | None = None,
-    ) -> (
-        Float64[ndarray, 'ndpost m']
-        | Float64[ndarray, 'nchain ndpost m']
-        | Float64[ndarray, 'ndpost g']
-        | Float64[ndarray, 'nchain ndpost g']
-    ):
+    ) -> Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m'] | Ranef:
         """
         Compute predictions at new points; requires a ``keepTrees=True`` fit.
 
@@ -1751,9 +1785,9 @@ class rbart_vi(_BartBase):
             Quantity returned: ``'ev'`` (expected value), ``'ppd'`` (posterior
             predictive), ``'bart'`` (the latent sum-of-trees), or ``'ranef'``
             (the random effects, one column per level of the `group_by` passed
-            here, labelled by ``ranef_levels(group_by)``; levels absent from
-            training keep their place in that order, so the labels need not be
-            a subset of the training ones).
+            here, returned with their names as a `Ranef`; levels absent from
+            training keep their place in that order, so the names need not be
+            a subset of `ranef_levels`).
         combineChains
             Whether the chains are stacked into the draws axis rather than
             kept on a leading `nchain` axis.
@@ -1762,18 +1796,55 @@ class rbart_vi(_BartBase):
         -------
         The predictions at `newdata`, on the expected-value scale unless ``type`` says otherwise.
         """
+        # built once and reused below: it fixes the order of the group axis, so
+        # reading the names off it is what keeps them in step with the columns
+        group_by_factor = to_factor(group_by)
         kw = {
             # convert `group_by` to an R factor because, when type='ranef',
             # dbarts parses it with `levels(group.by)`, which is NULL for a
             # plain character or integer vector, silently selecting no group at
             # all; the other types use `as.character(group.by)` which already
             # works fine but accepts a factor anyway
-            'group.by': to_factor(group_by),
+            'group.by': group_by_factor,
             'offset': offset,
             'type': type,
             'combineChains': combineChains,
         }
-        return self._call_rmethod('predict', newdata, **drop_none(kw))
+        out = self._call_rmethod('predict', newdata, **drop_none(kw))
+        if type == 'ranef':
+            return Ranef(out, self._r2py(robjects_r('levels')(group_by_factor)))
+        else:
+            return out
+
+    @overload
+    def extract(
+        self,
+        *,
+        type: Literal['ranef'],
+        sample: Literal['train', 'test'] | None = None,
+        combineChains: bool | None = None,
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
+    ) -> Ranef: ...
+
+    @overload
+    def extract(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart', 'trees'] | None = None,
+        sample: Literal['train', 'test'] | None = None,
+        combineChains: bool | None = None,
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
+    ) -> (
+        Float64[ndarray, 'ndpost n_or_m']
+        | Float64[ndarray, 'nchain ndpost n_or_m']
+        | DataFrame
+    ): ...
 
     def extract(
         self,
@@ -1786,8 +1857,9 @@ class rbart_vi(_BartBase):
         sampleNums: int | Integer[ndarray, ' s'] | None = None,
         newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
     ) -> (
-        Float64[ndarray, 'ndpost n_or_m_or_g']
-        | Float64[ndarray, 'nchain ndpost n_or_m_or_g']
+        Float64[ndarray, 'ndpost n_or_m']
+        | Float64[ndarray, 'nchain ndpost n_or_m']
+        | Ranef
         | DataFrame
     ):
         """
@@ -1800,9 +1872,8 @@ class rbart_vi(_BartBase):
         type
             Quantity returned: ``'ev'``, ``'ppd'``, ``'bart'``, ``'ranef'``
             (the random effects, one column per level of the `sample`'s
-            grouping factor, labelled by ``ranef_levels()`` or
-            ``ranef_levels(group_by_test)``), or ``'trees'`` for the tree
-            structures.
+            grouping factor, returned with their names as a `Ranef`), or
+            ``'trees'`` for the tree structures.
         sample
             Which points to extract: ``'train'`` or ``'test'``; unusable with
             ``type='trees'``.
@@ -1832,14 +1903,31 @@ class rbart_vi(_BartBase):
             'sampleNums': sampleNums,
             'newdata': newdata,
         }
-        return self._call_rmethod('extract', **drop_none(kw))
+        out = self._call_rmethod('extract', **drop_none(kw))
+        if type == 'ranef':
+            return Ranef(out, self._ranef_levels(sample or 'train'))
+        else:
+            return out
+
+    @overload
+    def fitted(
+        self, *, type: Literal['ranef'], sample: Literal['train', 'test'] | None = None
+    ) -> Ranef: ...
+
+    @overload
+    def fitted(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart'] | None = None,
+        sample: Literal['train', 'test'] | None = None,
+    ) -> Float64[ndarray, ' n_or_m']: ...
 
     def fitted(
         self,
         *,
         type: Literal['ev', 'ppd', 'bart', 'ranef'] | None = None,  # noqa: A002 mirrors the R argument name
         sample: Literal['train', 'test'] | None = None,
-    ) -> Float64[ndarray, ' n_or_m_or_g']:
+    ) -> Float64[ndarray, ' n_or_m'] | Ranef:
         """
         Return the posterior mean for the training (default) or test points.
 
@@ -1850,7 +1938,7 @@ class rbart_vi(_BartBase):
         type
             Quantity averaged: ``'ev'``, ``'ppd'``, ``'bart'``, or ``'ranef'``
             (the random effects, one value per level of the `sample`'s grouping
-            factor, labelled as in `extract`).
+            factor, returned with their names as a `Ranef`).
         sample
             Which points to use: ``'train'`` or ``'test'``.
 
@@ -1859,4 +1947,8 @@ class rbart_vi(_BartBase):
         The posterior mean at the requested points, or per group with ``type='ranef'``.
         """
         kw = {'type': type, 'sample': sample}
-        return self._call_rmethod('fitted', **drop_none(kw))
+        out = self._call_rmethod('fitted', **drop_none(kw))
+        if type == 'ranef':
+            return Ranef(out, self._ranef_levels(sample or 'train'))
+        else:
+            return out
