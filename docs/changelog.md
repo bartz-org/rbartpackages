@@ -31,7 +31,7 @@ SOFTWARE.
 # Changelog
 
 
-## 0.3.0 Bayesian Alien Radioactive Tacos (2026-08-25)
+## 0.3.0 Bayesian Alien Radioactive Tacos (2026-08-31)
 
 - fix typing issues
 - fix bugs in dbarts wrapper
