@@ -1,14 +1,18 @@
 # rbartpackages
 
-Python wrappers of R BART (Bayesian Additive Regression Trees) packages, built on [rpy2](https://rpy2.github.io).
+Python wrappers of R BART (Bayesian Additive Regression Trees) packages.
 
-`rbartpackages` lets you call several R BART implementations from Python with a uniform, lightly-typed interface: arguments are converted to R, the fitted R object's components become Python attributes, and the original R documentation is attached to each wrapper class. It currently wraps:
+`rbartpackages` lets you use a few R BART implementations (including the 3 most popular ones) from Python with a natural Python experience. The Python wrappers closely follow the R packages they wrap, so they should be obvious to use coming from R if one wants to switch to Python.
+
+The packages included are:
 
 - [`BART`](https://cran.r-project.org/package=BART)
 - [`BART3`](https://github.com/rsparapa/bnptools) (the development superset of `BART`)
 - [`bartMachine`](https://cran.r-project.org/package=bartMachine)
 - [`dbarts`](https://cran.r-project.org/package=dbarts)
 - [`missBART`](https://github.com/yongchengoh/missBART) (multivariate BART with non-ignorable missing responses)
+
+The wrappers are incomplete and only wrap the main functions and objects of the packages. The most complete wrapper is `dbarts`. If you need more functionality wrapped, feel free to [open an issue on github](https://github.com/bartz-org/rbartpackages/issues). Alternatively, this library provides simplified tools and utilities to let the user wrap arbitrary R classes and functions, see [the guide](https://bartz-org.github.io/rbartpackages/docs/guide/custom-wrapper.html) and [the reference](https://bartz-org.github.io/rbartpackages/docs/reference/_autogen/mod/rbartpackages.base.html#module-rbartpackages.base).
 
 ## Installation
 
@@ -39,5 +43,4 @@ R argument names with dots are passed with underscores (`x.train` → `x_train`)
 - [Documentation (development version)](https://bartz-org.github.io/rbartpackages/docs-dev)
 - [Repository](https://github.com/bartz-org/rbartpackages)
 - [List of BART packages](https://bartz-org.github.io/bartz/docs-dev/pkglist.html) (maintained in the bartz docs)
-
-These wrappers originated in the [bartz](https://github.com/bartz-org/bartz) project, where they are used to validate against reference R implementations.
+- Check out [bartz](https://github.com/bartz-org/bartz), a fast Python implementation of BART
