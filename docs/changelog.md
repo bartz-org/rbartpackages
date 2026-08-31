@@ -31,6 +31,17 @@ SOFTWARE.
 # Changelog
 
 
+## 0.3.0 Bayesian Alien Radioactive Tacos (2026-08-31)
+
+- fix typing issues
+- fix bugs in dbarts wrapper
+- update dbarts wrapper for changes in dbarts 0.9-34
+    - explicitly pin dbarts >= 0.9-34 because of backward-incompatible changes
+    - state policy that only latest versions of R packages are supported
+- make pandas a required dependency such that output dataframes are never unconverted R objects
+- fix bug that polars extra would not install pyarrow, required to actually use polars
+
+
 ## 0.2.0 Baruch's Algorithm for Recursive Trainspotting (2026-06-25)
 
 - new wrapper module for `missBART`, wrapping `missBART2`

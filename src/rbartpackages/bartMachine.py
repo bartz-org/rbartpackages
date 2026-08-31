@@ -25,8 +25,6 @@
 """
 Wrapper for the R package bartMachine (on CRAN).
 
-bartMachine wants data frames, so this module requires the ``pandas`` extra.
-
 Importing this module loads bartMachine's R namespace, which starts the JVM.
 JVM options can only be set before that: the import defaults the heap size
 limit to 5 GB and enables the Vector API module bartMachine uses on JDK 16+;

@@ -43,6 +43,14 @@ Wrapper decorators
     rmethod
     rproperty
 
+R packages
+----------
+
+.. autosummary::
+    :toctree:
+
+    require_r_package
+
 Protocols
 ---------
 
@@ -69,6 +77,7 @@ from rbartpackages._src.base import (
     RObjectBase,
     Series,
     String,
+    require_r_package,
     rfunction,
     rmethod,
     rproperty,

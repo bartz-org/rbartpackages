@@ -60,7 +60,7 @@ The R dependencies are pinned in `renv.lock` (regenerate via renv, do not hand-e
     - keep return value descriptions on one line (the html render garbles multi-line ones)
 - **type annotations:**
     - do not stringify type annotations
-    - jaxtyping for array shapes (`Float64[ndarray, 'n p']`); these annotate numpy arrays and are documentation only (not runtime-checked)
+    - jaxtyping for array shapes (`Float64[ndarray, 'n p']`); these annotate numpy arrays and serve both as documentation and for runtime shape checking in unit tests
     - space before a single-axis annotation `Float64[ndarray, ' n']` because of a linter bug
         - same trick for anything that ruff would parse as a quoted expression
     - type hints go in signatures, not docstrings; when returning multiple values, copy the hints verbatim in the return list (the html doc render needs it)

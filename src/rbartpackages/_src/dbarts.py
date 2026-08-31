@@ -24,15 +24,17 @@
 
 """Implementation of `rbartpackages.dbarts`."""
 
+from collections.abc import Sequence
 from functools import partial
-from typing import Literal, cast, no_type_check
+from typing import Literal, NamedTuple, cast, no_type_check, overload
 
-from jaxtyping import Float64, Int32, Integer
+from jaxtyping import Bool, Float64, Int32, Integer
 from numpy import ndarray
 from rpy2 import robjects
 from rpy2.rlike.container import NamedList
 from rpy2.robjects.language import LangVector
 from rpy2.robjects.methods import RS4
+from rpy2.robjects.vectors import FactorVector, ListVector
 
 # WORKAROUND(python<3.11): import NotRequired, Self, TypedDict from typing
 from typing_extensions import NotRequired, Self, TypedDict
@@ -43,9 +45,17 @@ from rbartpackages._src.base import (
     String,
     drop_none,
     namedlist_to_dict,
+    require_r_package,
+    rfunction,
     robjects_r,
     rproperty,
 )
+
+# 0.9-34 brought `updatePredictorPerObservationJointly` (resolved eagerly
+# below), the sampler's `getTrees`, `setPredictor`'s `forceUpdate` and
+# `extract`'s tree arguments. Checked here so an older dbarts says so, rather
+# than failing on whichever of those the module or the user reaches first.
+require_r_package('dbarts', '0.9-34')
 
 
 def to_formula(formula: object) -> object:
@@ -70,6 +80,11 @@ def to_named_vector(value: object) -> object:
         vector = robjects.FloatVector(list(value.values()))
         return robjects_r('setNames')(vector, list(value.keys()))
     return value
+
+
+def to_factor(value: Integer[ndarray, ' m'] | String[ndarray, ' m']) -> FactorVector:
+    """Convert a grouping argument to an R factor."""
+    return robjects_r('factor')(RObjectBase._py2r(value))  # noqa: SLF001, base-class access
 
 
 class dbartsControl(RObjectBase):
@@ -260,6 +275,26 @@ class RunSamples(TypedDict):
     """Per-draw count of splits on each variable, summed over trees."""
 
 
+class Ranef(NamedTuple):
+    """
+    Type of the ``type='ranef'`` return values of `rbart_vi`'s methods.
+
+    This is a tuple, so you can unpack it as ``values, levels = ...``. It
+    carries group names along with an array, providing a Python-side equivalent
+    to R's `colnames`.
+    """
+
+    values: (
+        Float64[ndarray, ' g']
+        | Float64[ndarray, 'ndpost g']
+        | Float64[ndarray, 'nchain ndpost g']
+    )
+    """The random effects, with the `g` groups on the last axis."""
+
+    levels: String[ndarray, ' g']
+    """The group names in the order of the group axis 'g' in `values`."""
+
+
 class dbarts(RObjectBase):
     """
     Create a low-level `dbarts` sampler.
@@ -428,7 +463,7 @@ class dbarts(RObjectBase):
             'numThreads': numThreads,
         }
         out = self._call_rmethod('run', **drop_none(kw))
-        if out is robjects.NULL:
+        if out is None:
             return None  # R returns invisible NULL for zero samples
         return cast(RunSamples, namedlist_to_dict(out))
 
@@ -464,9 +499,6 @@ class dbarts(RObjectBase):
     def copy(self, *, shallow: bool | None = None) -> Self:
         """
         Create a deep (default) or shallow copy of the sampler.
-
-        The R method is broken once the sampler state has been cached; create
-        the sampler with ``dbartsControl(updateState=False)`` to use it.
 
         Parameters
         ----------
@@ -589,7 +621,8 @@ class dbarts(RObjectBase):
             Whether to refresh the sampler's cached state afterwards.
         """
         kw = {'updateScale': updateScale, 'updateState': updateState}
-        self._call_rmethod('setOffset', offset, **drop_none(kw))
+        offset_arg = robjects.NULL if offset is None else offset
+        self._call_rmethod('setOffset', offset_arg, **drop_none(kw))
 
     def setSigma(
         self,
@@ -612,31 +645,33 @@ class dbarts(RObjectBase):
     def setPredictor(
         self,
         x: Float64[ndarray, 'n cols'] | Float64[ndarray, ' n'],
-        column: int | String[ndarray, ' cols'] | None = None,
-        forceUpdate: bool | None = None,
+        column: int | str | Integer[ndarray, ' cols'] | None = None,
+        forceUpdate: bool | Literal['partial'] | None = None,
         *,
         updateCutPoints: bool | None = None,
         updateState: bool | None = None,
-    ) -> Int32[ndarray, ' 1'] | None:
+    ) -> Bool[ndarray, ' 1'] | Bool[ndarray, ' n'] | None:
         """
         Replace the predictor matrix (or the 1-based `column`).
-
-        Unforced updates (``forceUpdate=False``, the single-column default)
-        return whether the update succeeded: it fails if a tree ends up with
-        an empty leaf, rolling back the change. Whole-matrix updates are
-        forced by default.
 
         Parameters
         ----------
         x
-            The replacement predictors: a whole matrix, or a single column's
-            values when `column` is given.
+            The replacement predictors: a whole matrix, or the values of the
+            columns selected by `column`.
         column
-            The 1-based index or name of the single column to replace; the
-            whole matrix is replaced if omitted.
+            The 1-based index or name of a single column, or an array of
+            indices for several columns; the whole matrix is replaced if
+            omitted. Selecting by name requires the sampler to have column
+            names, and works one column at a time.
         forceUpdate
             Whether to keep the update even if it leaves a tree with an empty
             leaf; default ``True`` for a whole matrix, ``False`` for a column.
+            An unforced update reports whether it succeeded, rolling the change
+            back if it did not. ``"partial"`` instead installs the new column
+            one observation at a time, rolling back only the observations that
+            would empty a leaf, and reports which ones were kept; it requires a
+            single `column` and is incompatible with `updateCutPoints`.
         updateCutPoints
             Whether to recompute the decision-rule cutpoints from the new
             predictors.
@@ -645,7 +680,7 @@ class dbarts(RObjectBase):
 
         Returns
         -------
-        Whether the update succeeded for an unforced update, else ``None``.
+        Whether the update succeeded for an unforced update, one flag per observation for a partial one, else ``None``.
         """
         kw = {
             'forceUpdate': forceUpdate,
@@ -657,8 +692,8 @@ class dbarts(RObjectBase):
 
     def setTestPredictor(
         self,
-        x_test: Float64[ndarray, 'm cols'] | Float64[ndarray, ' m'],
-        column: int | String[ndarray, ' cols'] | None = None,
+        x_test: Float64[ndarray, 'm cols'] | Float64[ndarray, ' m'] | None,
+        column: int | str | Integer[ndarray, ' cols'] | None = None,
     ) -> None:
         """
         Replace the test predictor matrix (or the 1-based `column`).
@@ -666,18 +701,22 @@ class dbarts(RObjectBase):
         Parameters
         ----------
         x_test
-            The replacement test predictors: a whole matrix, or a single
-            column's values when `column` is given.
+            The replacement test predictors: a whole matrix, or the values of
+            the columns selected by `column`, or ``None`` to clear the test
+            data (not allowed with `column`).
         column
-            The 1-based index or name of the single column to replace; the
-            whole matrix is replaced if omitted.
+            The 1-based index or name of a single column, or an array of
+            indices for several columns; the whole matrix is replaced if
+            omitted. Selecting by name requires the test matrix to have column
+            names, and works one column at a time.
         """
         args = () if column is None else (column,)
-        self._call_rmethod('setTestPredictor', x_test, *args)
+        x_test_arg = robjects.NULL if x_test is None else x_test
+        self._call_rmethod('setTestPredictor', x_test_arg, *args)
 
     def setTestPredictorAndOffset(
         self,
-        x_test: Float64[ndarray, 'm p'],
+        x_test: Float64[ndarray, 'm p'] | None,
         offset_test: Float64[ndarray, ' m'] | float | None,
     ) -> None:
         """
@@ -686,12 +725,15 @@ class dbarts(RObjectBase):
         Parameters
         ----------
         x_test
-            The replacement test predictor matrix.
+            The replacement test predictor matrix, or ``None`` to clear the
+            test data (then `offset_test` must be ``None`` as well).
         offset_test
             The replacement test offset (a scalar is expanded to all test
             points), or ``None`` to clear it.
         """
-        self._call_rmethod('setTestPredictorAndOffset', x_test, offset_test)
+        x_test_arg = robjects.NULL if x_test is None else x_test
+        offset_arg = robjects.NULL if offset_test is None else offset_test
+        self._call_rmethod('setTestPredictorAndOffset', x_test_arg, offset_arg)
 
     def setTestOffset(self, offset_test: Float64[ndarray, ' m'] | float | None) -> None:
         """
@@ -703,7 +745,8 @@ class dbarts(RObjectBase):
             The replacement test offset (a scalar is expanded to all test
             points), or ``None`` to clear it.
         """
-        self._call_rmethod('setTestOffset', offset_test)
+        offset_arg = robjects.NULL if offset_test is None else offset_test
+        self._call_rmethod('setTestOffset', offset_arg)
 
     def printTrees(
         self,
@@ -726,6 +769,48 @@ class dbarts(RObjectBase):
         """
         kw = {'chainNums': chainNums, 'sampleNums': sampleNums}
         self._call_rmethod('printTrees', treeNums, **drop_none(kw))
+
+    def getTrees(
+        self,
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        current: bool | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
+    ) -> DataFrame:
+        """
+        Return the structure of the given trees as a data frame.
+
+        Parameters
+        ----------
+        treeNums
+            1-based indices of the trees to return; all of them if omitted.
+        chainNums
+            1-based indices of the chains to return; all of them if omitted.
+        sampleNums
+            1-based indices of the saved samples to return; all of them if
+            omitted. Ignored, with a warning, unless the samples are saved
+            (``keepTrees``) and `current` is false.
+        current
+            Whether to return the live working trees (the current sampler
+            position) rather than the saved samples; default false.
+        newdata
+            Predictors routed through the frozen trees, so that the ``n``
+            column counts those observations instead of the training ones; the
+            trees themselves are unchanged.
+
+        Returns
+        -------
+        One row per tree node, depth-first and left branch first, with columns ``chain`` (multiple chains only), ``sample`` (saved samples only), ``tree``, ``n``, ``var``, and ``value``.
+        """
+        kw = {
+            'treeNums': treeNums,
+            'chainNums': chainNums,
+            'sampleNums': sampleNums,
+            'current': current,
+            'newdata': newdata,
+        }
+        return self._call_rmethod('getTrees', **drop_none(kw))
 
     def plotTree(
         self,
@@ -756,6 +841,64 @@ class dbarts(RObjectBase):
             'treePlotPars': to_named_vector(treePlotPars),
         }
         self._call_rmethod('plotTree', treeNum, **drop_none(kw))
+
+
+@partial(rfunction, library='dbarts', rname='updatePredictorPerObservationJointly')
+@no_type_check
+def _update_predictor_jointly(
+    samplers: dbarts | ListVector,
+    x: Float64[ndarray, ' n'],
+    column: int | str,
+    updateState: bool,
+) -> Bool[ndarray, ' n']:
+    """Call R's `updatePredictorPerObservationJointly`; `updateState` may be omitted."""
+    ...
+
+
+def updatePredictorPerObservationJointly(
+    samplers: dbarts | Sequence[dbarts],
+    x: Float64[ndarray, ' n'],
+    column: int | str,
+    *,
+    updateState: bool | None = None,
+) -> Bool[ndarray, ' n']:
+    """
+    Jointly update a shared predictor column, one observation at a time.
+
+    Parameters
+    ----------
+    samplers
+        A sampler, or several sharing the same (index-aligned) observations.
+    x
+        The new values of the shared column, one per observation.
+    column
+        The 1-based index or the name of the shared column. An index refers to
+        the first sampler and is matched by name in the others, so every
+        sampler needs named predictor columns.
+    updateState
+        Whether to refresh the samplers' cached states afterwards; ``None``
+        leaves each of them to its own `control`.
+
+    Returns
+    -------
+    One flag per observation, telling whether its new value was installed in all the samplers.
+
+    Notes
+    -----
+    This is the multi-sampler counterpart of `dbarts.setPredictor` with
+    ``forceUpdate='partial'``: an observation's new value is installed only if
+    it leaves every leaf of every tree of every sampler non-empty, and is
+    rolled back in all of them otherwise. The tree structures are unchanged;
+    only the observations are re-routed.
+    """
+    if isinstance(samplers, dbarts):
+        rsamplers = samplers
+    else:
+        # the R function takes a list of samplers; build it from the wrapped R
+        # objects, as rpy2 has no conversion for a sequence of them
+        rsamplers = robjects_r('list')(*RObjectBase._args2r(samplers))  # noqa: SLF001, base-class access
+    kw = drop_none({'updateState': updateState})
+    return _update_predictor_jointly(rsamplers, x, column, **kw)
 
 
 class _BartBase(RObjectBase):
@@ -826,13 +969,10 @@ class _BartBase(RObjectBase):
         """
         Normalize the fit's R components into Python values.
 
-        R fills inapplicable list components with NULL (e.g. ``yhat.test``
-        without test data); expose them as None like the dropped ones, unwrap
-        the scalar attributes, and wrap the kept sampler.
+        Unwrap the scalar attributes and wrap the kept sampler. The components
+        R fills with NULL when inapplicable (e.g. ``yhat.test`` without test
+        data) already arrive as None from the converter, like the dropped ones.
         """
-        for name, value in list(vars(self).items()):
-            if value is robjects.NULL:
-                setattr(self, name, None)
         if self.n_chains is not None:
             self.n_chains = cast(ndarray, self.n_chains).item()
         if self.sigest is not None:
@@ -849,14 +989,22 @@ class _BartBase(RObjectBase):
         type: Literal['ev', 'ppd', 'bart', 'trees'] | None = None,  # noqa: A002 mirrors the R argument name
         sample: Literal['train', 'test'] | None = None,
         combineChains: bool | None = None,
-    ) -> Float64[ndarray, 'ndpost n'] | Float64[ndarray, 'nchain ndpost n'] | DataFrame:
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
+    ) -> (
+        Float64[ndarray, 'ndpost n_or_m']
+        | Float64[ndarray, 'nchain ndpost n_or_m']
+        | DataFrame
+    ):
         """
         Return the kept draws for the training (default) or test points.
 
         Like `predict`, the draws are on the expected-value scale by default.
-        With ``type='trees'`` (requires ``keeptrees=True``) the tree
-        structures are returned as a data frame instead. Arguments left to
-        ``None`` are omitted from the R call.
+        With ``type='trees'`` (which requires ``keeptrees=True``) the call is
+        forwarded to `dbarts.getTrees` instead, returning the tree structures
+        as a data frame.
 
         Parameters
         ----------
@@ -864,16 +1012,34 @@ class _BartBase(RObjectBase):
             Quantity returned: ``'ev'``, ``'ppd'``, ``'bart'`` (see `predict`),
             or ``'trees'`` for the tree structures.
         sample
-            Which points to extract: ``'train'`` or ``'test'``.
+            Which points to extract: ``'train'`` or ``'test'``; unusable with
+            ``type='trees'``.
         combineChains
             Whether the chains are stacked into the draws axis rather than
-            kept on a leading `nchain` axis.
+            kept on a leading `nchain` axis; unusable with ``type='trees'``.
+        treeNums
+            1-based indices of the trees to return; ``type='trees'`` only.
+        chainNums
+            1-based indices of the chains to return; ``type='trees'`` only.
+        sampleNums
+            1-based indices of the samples to return; ``type='trees'`` only.
+        newdata
+            Predictors routed through the frozen trees, so that the ``n``
+            column counts those observations; ``type='trees'`` only.
 
         Returns
         -------
         The draws at the requested points, or the tree-structure data frame with ``type='trees'``.
         """
-        kw = {'type': type, 'sample': sample, 'combineChains': combineChains}
+        kw = {
+            'type': type,
+            'sample': sample,
+            'combineChains': combineChains,
+            'treeNums': treeNums,
+            'chainNums': chainNums,
+            'sampleNums': sampleNums,
+            'newdata': newdata,
+        }
         return self._call_rmethod('extract', **drop_none(kw))
 
     def fitted(
@@ -881,7 +1047,7 @@ class _BartBase(RObjectBase):
         *,
         type: Literal['ev', 'ppd', 'bart'] | None = None,  # noqa: A002 mirrors the R argument name
         sample: Literal['train', 'test'] | None = None,
-    ) -> Float64[ndarray, ' n']:
+    ) -> Float64[ndarray, ' n_or_m']:
         """
         Return the posterior mean for the training (default) or test points.
 
@@ -1441,10 +1607,13 @@ class rbart_vi(_BartBase):
     """The test grouping factor, if given."""
 
     ranef: Float64[ndarray, 'ndpost g'] | Float64[ndarray, 'nchain ndpost g']
-    """Random-intercept draws for each of the `g` groups."""
+    """Random-intercept draws for each of the `g` groups, labelled by `ranef_levels`."""
+
+    ranef_levels: String[ndarray, ' g']
+    """Names of the training groups, labelling the last axis of `ranef` and `ranef_mean`."""
 
     ranef_mean: Float64[ndarray, ' g']
-    """Posterior mean of `ranef` per group."""
+    """Posterior mean of `ranef` per group, labelled by `ranef_levels`."""
 
     seed: Int32[ndarray, ' state']
     """R RNG state used by `predict` to draw the effects of unseen groups."""
@@ -1536,39 +1705,86 @@ class rbart_vi(_BartBase):
         RObjectBase.__init__(self, **drop_none(kw))
         self._postprocess()
 
+    def _postprocess(self) -> None:
+        """Normalize the fit's R components, and read the training level names."""
+        super()._postprocess()
+        self.ranef_levels = self._ranef_levels('train')
+
     def _wrap_fit(self) -> None:
         """Wrap the R list of per-chain samplers in the `dbarts` interface."""
         if self.fit is not None:
             self.fit = tuple(map(dbarts._wrap, cast(NamedList, self.fit)))  # noqa: SLF001, base-class access
 
+    def _ranef_levels(self, sample: Literal['train', 'test']) -> String[ndarray, ' g']:
+        """
+        Read the names labelling the `sample`'s random-effect axis off the R fit.
+
+        R orders that axis by the levels of the sample's grouping factor, so
+        the names are taken from the factor itself rather than recomputed from
+        the converted `group_by`/`group_by_test`, whose conversion to numpy
+        strings drops the level order.
+        """
+        rname = 'group.by' if sample == 'train' else 'group.by.test'
+        factor = robjects_r['$'](self._robject, rname)
+        return self._r2py(robjects_r('levels')(factor))
+
+    # the overloads keep `type='ranef'`, the only case with a group axis to
+    # label, from widening the return type of the other cases
+    @overload
     def predict(
         self,
         newdata: Float64[ndarray, 'm p'] | DataFrame,
         *,
-        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None = None,
+        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'],
+        offset: Float64[ndarray, ' m'] | float | None = None,
+        type: Literal['ranef'],
+        combineChains: bool | None = None,
+    ) -> Ranef: ...
+
+    @overload
+    def predict(
+        self,
+        newdata: Float64[ndarray, 'm p'] | DataFrame,
+        *,
+        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'],
+        offset: Float64[ndarray, ' m'] | float | None = None,
+        type: Literal['ev', 'ppd', 'bart'] | None = None,
+        combineChains: bool | None = None,
+    ) -> Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m']: ...
+
+    def predict(
+        self,
+        newdata: Float64[ndarray, 'm p'] | DataFrame,
+        *,
+        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'],
         offset: Float64[ndarray, ' m'] | float | None = None,
         type: Literal['ev', 'ppd', 'bart', 'ranef'] | None = None,  # noqa: A002 mirrors the R argument name
         combineChains: bool | None = None,
-    ) -> Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m']:
+    ) -> Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m'] | Ranef:
         """
         Compute predictions at new points; requires a ``keepTrees=True`` fit.
 
-        Each new point needs a `group_by` level. Arguments left to ``None``
-        are omitted from the R call, so R computes its own defaults.
+        The optional arguments left to ``None`` are omitted from the R call, so
+        R computes its own defaults.
 
         Parameters
         ----------
         newdata
             New predictors, with the same column structure as `x_train`.
         group_by
-            Grouping factor of the new points; out-of-sample groups draw fresh
-            random effects.
+            Grouping factor of the new points, one level each; groups not seen
+            in training get new independent effects drawn from the prior, i.e.,
+            zero-mean Gaussian with the posterior draw of `tau` as standard
+            deviation.
         offset
             Offset added to the predictions.
         type
             Quantity returned: ``'ev'`` (expected value), ``'ppd'`` (posterior
             predictive), ``'bart'`` (the latent sum-of-trees), or ``'ranef'``
-            (the random effects).
+            (the random effects, one column per level of the `group_by` passed
+            here, returned with their names as a `Ranef`; levels absent from
+            training keep their place in that order, so the names need not be
+            a subset of `ranef_levels`).
         combineChains
             Whether the chains are stacked into the draws axis rather than
             kept on a leading `nchain` axis.
@@ -1577,10 +1793,159 @@ class rbart_vi(_BartBase):
         -------
         The predictions at `newdata`, on the expected-value scale unless ``type`` says otherwise.
         """
+        # built once and reused below: it fixes the order of the group axis, so
+        # reading the names off it is what keeps them in step with the columns
+        group_by_factor = to_factor(group_by)
         kw = {
-            'group.by': group_by,
+            # convert `group_by` to an R factor because, when type='ranef',
+            # dbarts parses it with `levels(group.by)`, which is NULL for a
+            # plain character or integer vector, silently selecting no group at
+            # all; the other types instead fail by not detecting out-of-sample
+            # levels
+            'group.by': group_by_factor,
             'offset': offset,
             'type': type,
             'combineChains': combineChains,
         }
-        return self._call_rmethod('predict', newdata, **drop_none(kw))
+        out = self._call_rmethod('predict', newdata, **drop_none(kw))
+        if type == 'ranef':
+            return Ranef(out, self._r2py(robjects_r('levels')(group_by_factor)))
+        else:
+            return out
+
+    @overload
+    def extract(
+        self,
+        *,
+        type: Literal['ranef'],
+        sample: Literal['train', 'test'] | None = None,
+        combineChains: bool | None = None,
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
+    ) -> Ranef: ...
+
+    @overload
+    def extract(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart', 'trees'] | None = None,
+        sample: Literal['train', 'test'] | None = None,
+        combineChains: bool | None = None,
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
+    ) -> (
+        Float64[ndarray, 'ndpost n_or_m']
+        | Float64[ndarray, 'nchain ndpost n_or_m']
+        | DataFrame
+    ): ...
+
+    def extract(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart', 'ranef', 'trees'] | None = None,  # noqa: A002 mirrors the R argument name
+        sample: Literal['train', 'test'] | None = None,
+        combineChains: bool | None = None,
+        treeNums: int | Integer[ndarray, ' t'] | None = None,
+        chainNums: int | Integer[ndarray, ' c'] | None = None,
+        sampleNums: int | Integer[ndarray, ' s'] | None = None,
+        newdata: Float64[ndarray, 'm p'] | DataFrame | None = None,
+    ) -> (
+        Float64[ndarray, 'ndpost n_or_m']
+        | Float64[ndarray, 'nchain ndpost n_or_m']
+        | Ranef
+        | DataFrame
+    ):
+        """
+        Return the kept draws for the training (default) or test points.
+
+        As `bart.extract`, plus the random effects with ``type='ranef'``.
+
+        Parameters
+        ----------
+        type
+            Quantity returned: ``'ev'``, ``'ppd'``, ``'bart'``, ``'ranef'``
+            (the random effects, one column per level of the `sample`'s
+            grouping factor, returned with their names as a `Ranef`), or
+            ``'trees'`` for the tree structures.
+        sample
+            Which points to extract: ``'train'`` or ``'test'``; unusable with
+            ``type='trees'``.
+        combineChains
+            Whether the chains are stacked into the draws axis rather than
+            kept on a leading `nchain` axis; unusable with ``type='trees'``.
+        treeNums
+            1-based indices of the trees to return; ``type='trees'`` only.
+        chainNums
+            1-based indices of the chains to return; ``type='trees'`` only.
+        sampleNums
+            1-based indices of the samples to return; ``type='trees'`` only.
+        newdata
+            Predictors routed through the frozen trees, so that the ``n``
+            column counts those observations; ``type='trees'`` only.
+
+        Returns
+        -------
+        The draws at the requested points, or the tree-structure data frame with ``type='trees'``.
+        """
+        kw = {
+            'type': type,
+            'sample': sample,
+            'combineChains': combineChains,
+            'treeNums': treeNums,
+            'chainNums': chainNums,
+            'sampleNums': sampleNums,
+            'newdata': newdata,
+        }
+        out = self._call_rmethod('extract', **drop_none(kw))
+        if type == 'ranef':
+            return Ranef(out, self._ranef_levels(sample or 'train'))
+        else:
+            return out
+
+    @overload
+    def fitted(
+        self, *, type: Literal['ranef'], sample: Literal['train', 'test'] | None = None
+    ) -> Ranef: ...
+
+    @overload
+    def fitted(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart'] | None = None,
+        sample: Literal['train', 'test'] | None = None,
+    ) -> Float64[ndarray, ' n_or_m']: ...
+
+    def fitted(
+        self,
+        *,
+        type: Literal['ev', 'ppd', 'bart', 'ranef'] | None = None,  # noqa: A002 mirrors the R argument name
+        sample: Literal['train', 'test'] | None = None,
+    ) -> Float64[ndarray, ' n_or_m'] | Ranef:
+        """
+        Return the posterior mean for the training (default) or test points.
+
+        As `bart.fitted`, plus the random effects with ``type='ranef'``.
+
+        Parameters
+        ----------
+        type
+            Quantity averaged: ``'ev'``, ``'ppd'``, ``'bart'``, or ``'ranef'``
+            (the random effects, one value per level of the `sample`'s grouping
+            factor, returned with their names as a `Ranef`).
+        sample
+            Which points to use: ``'train'`` or ``'test'``.
+
+        Returns
+        -------
+        The posterior mean at the requested points, or per group with ``type='ranef'``.
+        """
+        kw = {'type': type, 'sample': sample}
+        out = self._call_rmethod('fitted', **drop_none(kw))
+        if type == 'ranef':
+            return Ranef(out, self._ranef_levels(sample or 'train'))
+        else:
+            return out

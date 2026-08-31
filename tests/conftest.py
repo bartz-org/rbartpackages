@@ -29,8 +29,17 @@ from sys import modules
 
 import numpy as np
 import pytest
+from jaxtyping import install_import_hook
 
 from tests.util import int_seed, nnone
+
+# Check the jaxtyping annotations (dtypes and shapes) against the actual values
+# at runtime, with `tests.util.typechecker` (beartype) as the checker. The hook
+# rewrites the wrappers as they are imported, so it must run before any test
+# module pulls one in; conftest is loaded first, and none of the imports above
+# reach `rbartpackages`. The checker is named by dotted path, which the hook
+# resolves as an attribute of the already-imported `tests.util`.
+install_import_hook('rbartpackages', 'tests.util.typechecker')
 
 
 @pytest.fixture

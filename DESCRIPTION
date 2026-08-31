@@ -7,7 +7,7 @@ Imports:
     BART,
     BART3,
     bartMachine,
-    dbarts,
+    dbarts (>= 0.9-34),
     missBART
 Remotes:
     rsparapa/bnptools/BART3,

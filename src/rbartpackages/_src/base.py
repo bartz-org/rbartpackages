@@ -32,13 +32,22 @@ from inspect import cleandoc
 from re import fullmatch, match
 from textwrap import indent
 from types import FunctionType
-from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypeAlias, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Protocol,
+    TypeAlias,
+    cast,
+    runtime_checkable,
+)
 
 import numpy as np
 from jaxtyping import AbstractDtype
 from rpy2 import robjects
+from rpy2.rinterface import NULLType
 from rpy2.rlike.container import NamedList
-from rpy2.robjects import BoolVector, conversion, numpy2ri
+from rpy2.robjects import BoolVector, conversion, numpy2ri, pandas2ri
 from rpy2.robjects.help import Package
 from rpy2.robjects.methods import RS4
 
@@ -46,20 +55,16 @@ from rpy2.robjects.methods import RS4
 from typing_extensions import Self
 
 # converter for pandas
-PANDAS_CONVERTER = conversion.Converter('pandas')
-try:
-    from rpy2.robjects import pandas2ri
-except ImportError:  # pragma: no cover - optional dep always present in CI
-    pass
-else:
-    PANDAS_CONVERTER = pandas2ri.converter
+PANDAS_CONVERTER = pandas2ri.converter
 
 # converter for polars
 POLARS_CONVERTER = conversion.Converter('polars')
 try:
     import polars as pl
-    from rpy2.robjects import pandas2ri
-except ImportError:  # pragma: no cover - optional dep always present in CI
+
+    # the polars <-> pandas conversions below go through Arrow
+    import pyarrow as pa  # noqa: F401, imported only to check it is installed
+except ImportError:  # pragma: no cover - optional deps always present in CI
     pass
 else:
 
@@ -125,30 +130,19 @@ def dict_to_r(x: dict[str, Any]) -> robjects.ListVector:
 DICT_CONVERTER.py2rpy.register(dict, dict_to_r)
 
 
-class DataFrame(Protocol):
-    """
-    Duck type of the dataframe arguments accepted by the wrappers.
-
-    Both `pandas.DataFrame` and :doc:`polars.DataFrame
-    <polars:reference/dataframe/index>` match; they are converted to R data
-    frames, with categorical columns becoming factors.
-    """
-
-    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
-        """Export as an Arrow PyCapsule stream."""
-
-    @property
-    def columns(self) -> Iterable[str]:
-        """Column names."""
-
-    @property
-    def shape(self) -> tuple[int, ...]:
-        """Frame dimensions."""
-
-    def to_numpy(self) -> np.ndarray:
-        """Convert to a numpy array."""
+# converter for R's NULL
+NULL_CONVERTER = conversion.Converter('null')
 
 
+def null_to_none(_x: object) -> None:
+    """Convert R's NULL to ``None``."""
+    return
+
+
+NULL_CONVERTER.rpy2py.register(NULLType, null_to_none)
+
+
+@runtime_checkable
 class Series(Protocol):
     """
     Duck type of the series arguments accepted by the wrappers.
@@ -171,6 +165,36 @@ class Series(Protocol):
         """Convert to a numpy array."""
 
 
+@runtime_checkable
+class DataFrame(Protocol):
+    """
+    Duck type of the dataframe arguments accepted by the wrappers.
+
+    Both `pandas.DataFrame` and :doc:`polars.DataFrame
+    <polars:reference/dataframe/index>` match; they are converted to R data
+    frames, with categorical columns becoming factors. The wrappers that return
+    a data frame return a polars one if polars and pyarrow are installed, else
+    a pandas one.
+    """
+
+    def __arrow_c_stream__(self, requested_schema: object | None = None) -> object:
+        """Export as an Arrow PyCapsule stream."""
+
+    def __getitem__(self, column: str, /) -> Series:
+        """Take a column by name."""
+
+    @property
+    def columns(self) -> Iterable[str]:
+        """Column names."""
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        """Frame dimensions."""
+
+    def to_numpy(self) -> np.ndarray:
+        """Convert to a numpy array."""
+
+
 if TYPE_CHECKING:
     # type checkers reject subscripting a plain class, so hide the custom dtype
     # behind `Annotated`, like jaxtyping does with its own dtypes
@@ -180,7 +204,9 @@ else:
     class String(AbstractDtype):
         """Represent a `numpy.str_` data dtype."""
 
-        dtypes = r'<U\d+'
+        # jaxtyping matches this against `array.dtype.type.__name__`, so it must
+        # name the scalar type rather than the `<U8`-style dtype string.
+        dtypes = 'str_'
 
 
 def drop_none(kw: dict[str, Any]) -> dict[str, Any]:
@@ -210,15 +236,16 @@ def namedlist_to_dict(namedlist: NamedList) -> dict[str, Any]:
 
     Returns
     -------
-    The list values by name, with ``.`` in names replaced by ``_`` and NULL values by ``None``.
+    The list values by name, with ``.`` in names replaced by ``_``.
     """
-    return {
-        str(it.name).replace('.', '_'): None if it.value is robjects.NULL else it.value
-        for it in namedlist.items()
-    }
+    return {str(it.name).replace('.', '_'): it.value for it in namedlist.items()}
 
 
 R_IDENTIFIER = r'(?:[a-zA-Z]|\.(?![0-9]))[a-zA-Z0-9._]*'
+
+# An R package version: numeric components separated by '.' or '-', which R
+# orders alike (so 0.9-34 sorts after 0.9-9 and before 0.10-1).
+R_VERSION = r'[0-9]+(?:[.-][0-9]+)*'
 
 # Type of a value living on the R side of the rpy2 boundary. It is genuinely
 # dynamic (what R hands back depends on the code), so it aliases `Any`: a checker
@@ -295,7 +322,16 @@ class RObjectBase:
         + BOOL_VECTOR_CONVERTER
         + JAX_CONVERTER
         + DICT_CONVERTER
+        + NULL_CONVERTER
     )
+    """Converters applied to the values crossing the rpy2 boundary.
+
+    The NULL => ``None`` mapping is deliberately receive-only: on the way out
+    ``None`` means "omit the argument and let R apply its default" (see
+    `drop_none`), and that default is often not NULL, so the call sites that do
+    want to pass NULL say so explicitly.
+    """
+
     _convctx = conversion.localconverter(_converter)
 
     @classmethod
@@ -572,3 +608,51 @@ def rfunction(
         return RObjectBase._r2py(out)  # noqa: SLF001, base-class access
 
     return impl
+
+
+def require_r_package(library: str, min_version: str) -> None:
+    """
+    Load an R package's namespace, requiring a minimum version.
+
+    The wrappers track the current release of each R package; a wrapper module
+    calls this at import time to declare the oldest version it supports, so
+    that an older installation fails immediately with a legible message instead
+    of at some arbitrary later point.
+
+    Parameters
+    ----------
+    library
+        The name of the R package.
+    min_version
+        The oldest supported version, written as R does (e.g. ``'0.9-34'``).
+        The comparison is R's own, which reads ``-`` and ``.`` alike as
+        component separators.
+
+    Raises
+    ------
+    ValueError
+        If `library` is not a valid R identifier, or `min_version` is not a
+        valid R version.
+    ImportError
+        If the installed `library` is older than `min_version`.
+
+    Examples
+    --------
+    >>> require_r_package('dbarts', '0.9-34')
+    """
+    if not fullmatch(R_IDENTIFIER, library):
+        msg = f'Invalid R package name: {library}'
+        raise ValueError(msg)
+    if not fullmatch(R_VERSION, min_version):
+        msg = f'Invalid R package version: {min_version}'
+        raise ValueError(msg)
+    robjects_r(f'loadNamespace("{library}")')
+    if not robjects_r(f'packageVersion("{library}") >= "{min_version}"')[0]:
+        # not `packageVersion`, which normalizes '-' to '.' when printed
+        version = robjects_r(f'packageDescription("{library}")$Version')[0]
+        msg = (
+            f'rbartpackages requires the R package {library} >= {min_version}, '
+            f'but version {version} is installed; update it with '
+            f'install.packages("{library}") in R.'
+        )
+        raise ImportError(msg)

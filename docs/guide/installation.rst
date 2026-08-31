@@ -42,24 +42,27 @@ To install the latest development version:
 
     pip install git+https://github.com/bartz-org/rbartpackages.git
 
-Optional extras enable the corresponding input-conversion paths: ``pandas`` and
-``polars`` let you pass data frames, ``jax`` lets you pass jax arrays.
+The wrappers that return a data frame return a pandas one by default. If
+`polars[pyarrow]` is installed, output dataframes switch to polars. If `jax` is
+installed, jax arrays are accepted as input arrays, but output arrays remain
+numpy. Two extras are provided for convenience to install these packages
+alongside `rbartpackages`:
 
 .. code-block:: sh
 
-    pip install rbartpackages[pandas,polars,jax]
+    pip install 'rbartpackages[polars,jax]'
 
 R packages
 ----------
 
-Install `R <https://cran.r-project.org>`_, then install the wrapped packages you
-intend to use. ``BART``, ``dbarts`` and ``bartMachine`` are on CRAN; ``BART3``
-and ``missBART`` live on GitHub:
+Install `R <https://cran.r-project.org>`_, then install the latest version of
+the wrapped packages you intend to use. Older versions are not supported but
+may work anyway. ``BART``, ``dbarts`` and ``bartMachine`` are on CRAN;
+``BART3`` and ``missBART`` live on GitHub:
 
 .. code-block:: r
 
     install.packages(c("BART", "dbarts", "bartMachine"))
-    # BART3 and missBART:
     install.packages("remotes")
     remotes::install_github("rsparapa/bnptools/BART3")
     remotes::install_github("yongchengoh/missBART")
@@ -67,6 +70,6 @@ and ``missBART`` live on GitHub:
 ``bartMachine`` is a Java package and additionally requires a working Java
 toolchain and ``rJava`` (run ``R CMD javareconf`` after installing a JDK).
 
-Importing a wrapper (e.g. ``from rbartpackages import BART3``) requires the
-matching R package to be installed, because the class docstrings are pulled from
-the R documentation at import time.
+Even just importing a wrapper (e.g. ``from rbartpackages import BART3``)
+requires the matching R package to be installed, because the class docstrings
+are pulled from the R documentation at import time.

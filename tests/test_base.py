@@ -34,7 +34,11 @@ import polars as pl
 import pytest
 
 from rbartpackages import base
-from rbartpackages._src.base import fork_safe_native_threads, robjects_r
+from rbartpackages._src.base import (
+    fork_safe_native_threads,
+    namedlist_to_dict,
+    robjects_r,
+)
 from rbartpackages.base import RObjectBase
 from tests.util import assert_allclose, assert_array_equal
 
@@ -77,6 +81,27 @@ def test_rfunction_invalid_names() -> None:
         base.rfunction(stub, library='base', rname='not a function')
 
 
+def test_require_r_package() -> None:
+    """An R package new enough passes, and its namespace is loaded."""
+    base.require_r_package('splines', '1.0')
+    assert robjects_r('isNamespaceLoaded("splines")')[0]
+
+
+def test_require_r_package_too_old() -> None:
+    """An R package too old raises `ImportError`, quoting both versions."""
+    version = robjects_r('packageDescription("stats")$Version')[0]
+    with pytest.raises(ImportError, match=f'stats >= 99.0.*{version} is installed'):
+        base.require_r_package('stats', '99.0')
+
+
+def test_require_r_package_invalid_names() -> None:
+    """The package name and the version are validated before reaching R."""
+    with pytest.raises(ValueError, match='Invalid R package name'):
+        base.require_r_package('not-a-package', '1.0')
+    with pytest.raises(ValueError, match='Invalid R package version'):
+        base.require_r_package('stats', '1.0"); stop("injected')
+
+
 def test_doc_pulled_from_r_when_missing() -> None:
     """A subclass without a docstring gets the R help page as documentation."""
 
@@ -113,6 +138,20 @@ def test_polars_dataframe_converts_to_r() -> None:
     assert isinstance(out, pl.DataFrame)
     assert out.columns == ['a', 'b']
     assert out['a'].to_list() == [1.0, 2.0, 3.0]
+
+
+def test_r_null_converts_to_none() -> None:
+    """R's NULL converts to ``None``, both on its own and inside a list.
+
+    The conversion is receive-only: ``None`` is not converted back to NULL,
+    since on the way out it means "omit the argument" (the drop_none
+    convention).
+    """
+    assert RObjectBase._r2py(robjects_r('NULL')) is None
+    out = RObjectBase._r2py(robjects_r('list(a = 1.0, b = NULL)'))
+    assert namedlist_to_dict(out)['b'] is None
+    with pytest.raises(NotImplementedError, match='NoneType'):
+        RObjectBase._py2r(None)
 
 
 def test_jax_array_converts_to_r() -> None:

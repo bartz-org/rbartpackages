@@ -44,6 +44,7 @@ Low-level sampler
     dbarts
     dbartsControl
     dbartsData
+    updatePredictorPerObservationJointly
 
 Supporting types
 ----------------
@@ -51,6 +52,7 @@ Supporting types
 .. autosummary::
     :toctree:
 
+    Ranef
     RunSamples
 """
 
@@ -58,6 +60,7 @@ Supporting types
 # ruff: noqa: F401
 
 from rbartpackages._src.dbarts import (
+    Ranef,
     RunSamples,
     bart,
     bart2,
@@ -65,4 +68,5 @@ from rbartpackages._src.dbarts import (
     dbartsControl,
     dbartsData,
     rbart_vi,
+    updatePredictorPerObservationJointly,
 )
