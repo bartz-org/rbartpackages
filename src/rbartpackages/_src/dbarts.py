@@ -1800,8 +1800,8 @@ class rbart_vi(_BartBase):
             # convert `group_by` to an R factor because, when type='ranef',
             # dbarts parses it with `levels(group.by)`, which is NULL for a
             # plain character or integer vector, silently selecting no group at
-            # all; the other types use `as.character(group.by)` which already
-            # works fine but accepts a factor anyway
+            # all; the other types instead fail by not detecting out-of-sample
+            # levels
             'group.by': group_by_factor,
             'offset': offset,
             'type': type,
