@@ -442,6 +442,44 @@ def test_rbart_vi(data: Data, rng: np.random.Generator) -> None:
             )
 
 
+def test_rbart_vi_without_ranef(data: Data, rng: np.random.Generator) -> None:
+    """Systematically trigger the ``type!='ranef'`` branches in `rbart_vi`."""
+    # run rbart_vi on random groups
+    n, _ = data.x.shape
+    group = np.array(['B', 'a', 'b'])[rng.integers(0, 3, n)]
+    fit = dbarts.rbart_vi(
+        'y ~ x1 + x2 + x3',
+        data=data.frame,
+        group_by=group,
+        n_trees=NTREE,
+        n_burn=NSKIP,
+        n_samples=NDPOST,
+        n_chains=1,
+        n_threads=1,
+        n_thin=1,
+        verbose=False,
+    )
+
+    # check fit.yhat_train == fit.extract(type='bart')
+    latent = fit.extract(type='bart')
+    assert isinstance(latent, np.ndarray)
+    assert_array_equal(latent, nnone(fit.yhat_train))
+
+    # check fit.yhat_train_mean == fit.fitted(type='bart')
+    assert_array_equal(fit.fitted(type='bart'), nnone(fit.yhat_train_mean))
+
+    # check the default `type` argument adds the effect of each point's group
+    columns = [np.flatnonzero(fit.ranef_levels == level).item() for level in group]
+    draws = fit.extract()
+    assert isinstance(draws, np.ndarray)
+    assert_close_matrices(draws, latent + fit.ranef[:, columns], rtol=1e-15)
+    assert_close_matrices(fit.fitted(), np.mean(draws, axis=0), rtol=1e-15)
+
+    # check the grouping of the new points can't be left out
+    with pytest.raises(RRuntimeError, match=r'argument "group\.by" is missing'):
+        fit.predict(data.test_frame)
+
+
 def test_rbart_vi_group_level_order(data: Data) -> None:
     """The group names follow R's level order, not numpy's sorting of the labels.
 
