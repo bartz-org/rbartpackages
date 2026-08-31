@@ -476,8 +476,8 @@ def test_rbart_vi_without_ranef(data: Data, rng: np.random.Generator) -> None:
     assert_close_matrices(fit.fitted(), np.mean(draws, axis=0), rtol=1e-15)
 
     # check the grouping of the new points can't be left out
-    with pytest.raises(RRuntimeError, match=r'argument "group\.by" is missing'):
-        fit.predict(data.test_frame)
+    with pytest.raises(TypeError, match=r'missing.*required.*group_by'):
+        fit.predict(data.test_frame)  # ty: ignore[no-matching-overload]
 
 
 def test_rbart_vi_group_level_order(data: Data) -> None:
@@ -979,7 +979,7 @@ def test_generic_signatures_match_r(
     Every Python argument must appear in the dispatched R method's formals
     (minus the dispatch arguments the wrapper fills itself) or be one of the
     arguments R takes through ``...``, every R argument must be exposed or
-    deliberately unexposed, and the defaults vary with the fit, so the
+    deliberately unexposed, and the optional defaults vary with the fit, so the
     signature defers each to R with ``None``. The quantities offered by
     ``type`` differ per method, so its `Literal` must list R's own choices.
     """
@@ -988,8 +988,21 @@ def test_generic_signatures_match_r(
     params = mapped_params(meth, skip=bound, dots=True)
     assert params.keys() - rnames == dotted
     assert rnames - params.keys() == unexposed
+
+    # an argument the wrapper makes required must be one R has no default for.
+    # The converse does not hold: `offset` and `weights` also lack an R default,
+    # but their method substitutes one through `missing()`, so they stay
+    # optional and defer to R like the rest.
+    nodefault = set(
+        robjects_r(
+            f'names(Filter(function(f) identical(f, quote(expr = )), formals({method})))'
+        )
+    )
     for name, param in params.items():
-        assert param.default is None, name
+        if param.default is Parameter.empty:
+            assert name in nodefault, name
+        else:
+            assert param.default is None, name
 
     # `type` is annotated as `Literal[...] | None`, R's choices as a `c(...)`
     # default that `evaluated_r_formals` evaluates to a character vector

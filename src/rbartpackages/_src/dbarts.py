@@ -82,12 +82,8 @@ def to_named_vector(value: object) -> object:
     return value
 
 
-def to_factor(
-    value: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None,
-) -> FactorVector | None:
-    """Convert a grouping argument to an R factor; pass ``None`` through."""
-    if value is None:
-        return None
+def to_factor(value: Integer[ndarray, ' m'] | String[ndarray, ' m']) -> FactorVector:
+    """Convert a grouping argument to an R factor."""
     return robjects_r('factor')(RObjectBase._py2r(value))  # noqa: SLF001, base-class access
 
 
@@ -1739,7 +1735,7 @@ class rbart_vi(_BartBase):
         self,
         newdata: Float64[ndarray, 'm p'] | DataFrame,
         *,
-        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None = None,
+        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'],
         offset: Float64[ndarray, ' m'] | float | None = None,
         type: Literal['ranef'],
         combineChains: bool | None = None,
@@ -1750,7 +1746,7 @@ class rbart_vi(_BartBase):
         self,
         newdata: Float64[ndarray, 'm p'] | DataFrame,
         *,
-        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None = None,
+        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'],
         offset: Float64[ndarray, ' m'] | float | None = None,
         type: Literal['ev', 'ppd', 'bart'] | None = None,
         combineChains: bool | None = None,
@@ -1760,7 +1756,7 @@ class rbart_vi(_BartBase):
         self,
         newdata: Float64[ndarray, 'm p'] | DataFrame,
         *,
-        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'] | None = None,
+        group_by: Integer[ndarray, ' m'] | String[ndarray, ' m'],
         offset: Float64[ndarray, ' m'] | float | None = None,
         type: Literal['ev', 'ppd', 'bart', 'ranef'] | None = None,  # noqa: A002 mirrors the R argument name
         combineChains: bool | None = None,
@@ -1768,17 +1764,18 @@ class rbart_vi(_BartBase):
         """
         Compute predictions at new points; requires a ``keepTrees=True`` fit.
 
-        Each new point needs a `group_by` level. Arguments left to ``None``
-        are omitted from the R call, so R computes its own defaults.
+        The optional arguments left to ``None`` are omitted from the R call, so
+        R computes its own defaults.
 
         Parameters
         ----------
         newdata
             New predictors, with the same column structure as `x_train`.
         group_by
-            Grouping factor of the new points; groups not seen in training get
-            new independent effects drawn from the prior, i.e., zero-mean
-            Gaussian with the posterior draw of `tau` as standard deviation.
+            Grouping factor of the new points, one level each; groups not seen
+            in training get new independent effects drawn from the prior, i.e.,
+            zero-mean Gaussian with the posterior draw of `tau` as standard
+            deviation.
         offset
             Offset added to the predictions.
         type
