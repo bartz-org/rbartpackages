@@ -31,9 +31,6 @@ SOFTWARE.
 # Changelog
 
 
-## 0.3.1 tbd (2026-10-03)
-
-
 ## 0.3.0 Bayesian Alien Radioactive Tacos (2026-08-31)
 
 - fix typing issues
