@@ -102,6 +102,7 @@ help:
 	@echo
 	@echo "Release workflow:"
 	@echo "- describe release in docs/changelog.md (its topmost header sets the version, follow effver https://jacobtomlinson.dev/effver)"
+	@echo "- $$ make setup (needed for make update-deps if clean worktree)"
 	@echo "- $$ make update-deps"
 	@echo "- $$ make release, will not release but runs all tests, iterate and debug"
 	@echo "- merge a PR with the changes"
