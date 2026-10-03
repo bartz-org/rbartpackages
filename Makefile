@@ -57,7 +57,7 @@ COOLDOWN_DAYS = 7
 # define command to run python with oldest supported dependencies
 # OLD_DATE / OLD_DELAY_DAYS / BUMP_PYTHON_VERSION_DATE / NUM_SUPPORTED_PYTHON_RELEASES
 # drive the `update-oldest-deps` policy.
-OLD_DATE = 2025-08-31T00:00:00Z
+OLD_DATE = 2025-10-03T00:00:00Z
 OLD_DELAY_DAYS = 365
 BUMP_PYTHON_VERSION_DATE = 10-31
 NUM_SUPPORTED_PYTHON_RELEASES = 5
@@ -102,6 +102,7 @@ help:
 	@echo
 	@echo "Release workflow:"
 	@echo "- describe release in docs/changelog.md (its topmost header sets the version, follow effver https://jacobtomlinson.dev/effver)"
+	@echo "- $$ make setup (needed for make update-deps if clean worktree)"
 	@echo "- $$ make update-deps"
 	@echo "- $$ make release, will not release but runs all tests, iterate and debug"
 	@echo "- merge a PR with the changes"
