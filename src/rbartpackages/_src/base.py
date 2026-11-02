@@ -25,7 +25,7 @@
 """Implementation of `rbartpackages.base`."""
 
 import ctypes
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from functools import wraps
 from inspect import cleandoc
@@ -37,6 +37,7 @@ from typing import (
     Any,
     ClassVar,
     Protocol,
+    Self,
     TypeAlias,
     cast,
     runtime_checkable,
@@ -50,9 +51,6 @@ from rpy2.rlike.container import NamedList
 from rpy2.robjects import BoolVector, conversion, numpy2ri, pandas2ri
 from rpy2.robjects.help import Package
 from rpy2.robjects.methods import RS4
-
-# WORKAROUND(python<3.11): import Self from typing
-from typing_extensions import Self
 
 # converter for pandas
 PANDAS_CONVERTER = pandas2ri.converter
@@ -279,7 +277,7 @@ NATIVE_THREAD_POOLS = (
 
 
 @contextmanager
-def fork_safe_native_threads() -> Iterator[None]:
+def fork_safe_native_threads() -> Generator[None]:
     """
     Cap OpenMP/OpenBLAS thread pools at one thread for the duration.
 

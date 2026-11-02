@@ -31,6 +31,9 @@ SOFTWARE.
 # Changelog
 
 
+## 0.3.1 provisionary (2026-11-02)
+
+
 ## 0.3.0 Bayesian Alien Radioactive Tacos (2026-08-31)
 
 - fix typing issues

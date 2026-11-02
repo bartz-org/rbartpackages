@@ -39,7 +39,7 @@ The helpers in this module are also used by `check_workarounds.py` to derive
 the floor for `rbartpackages` itself (= oldest benchmarked version).
 """
 
-import datetime
+import datetime as dt
 from pathlib import Path
 
 from git import Commit, Repo
@@ -47,7 +47,7 @@ from git.exc import BadName, GitCommandError
 from packaging.version import Version
 
 # Configuration
-CUTOFF_DATE = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+CUTOFF_DATE = dt.datetime(2025, 1, 1, tzinfo=dt.UTC)
 
 
 def get_default_branch_name(repo: Repo) -> str:
@@ -101,7 +101,7 @@ def default_branch_commit(repo: Repo) -> Commit:
 
 def benchmarked_version_tags(
     repo_path: Path | str = '.',
-) -> list[tuple[datetime.datetime, str]]:
+) -> list[tuple[dt.datetime, str]]:
     """Return `[(commit_date, tag_name), ...]` of tags benchmarked by ASV.
 
     A tag is included iff it starts with `v`, is reachable from the default
@@ -109,14 +109,12 @@ def benchmarked_version_tags(
     """
     repo = Repo(repo_path)
     head_commit = default_branch_commit(repo)
-    tags: list[tuple[datetime.datetime, str]] = []
+    tags: list[tuple[dt.datetime, str]] = []
     for tag in repo.tags:
         commit = tag.commit
         if not repo.is_ancestor(commit, head_commit):
             continue
-        commit_date = datetime.datetime.fromtimestamp(
-            commit.committed_date, tz=datetime.timezone.utc
-        )
+        commit_date = dt.datetime.fromtimestamp(commit.committed_date, tz=dt.UTC)
         if commit_date >= CUTOFF_DATE and tag.name.startswith('v'):
             tags.append((commit_date, tag.name))
     tags.sort()

@@ -24,15 +24,12 @@
 
 """Implementation of `rbartpackages.missBART`."""
 
-from typing import Any, cast
+from typing import Any, TypedDict, Unpack, cast
 
 import numpy as np
 from jaxtyping import Bool, Float64, Shaped
 from numpy import ndarray
 from rpy2.rlike.container import NamedList
-
-# WORKAROUND(python<3.11): import TypedDict, Unpack from typing
-from typing_extensions import TypedDict, Unpack
 
 from rbartpackages._src.base import RObjectBase, drop_none
 
