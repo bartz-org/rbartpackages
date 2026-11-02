@@ -52,7 +52,7 @@ runs:
     - name: Setup Pages
       uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
-    - name: Get documentation and benchmarks
+    - name: Get documentation
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: docs

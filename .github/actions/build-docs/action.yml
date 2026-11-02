@@ -24,19 +24,13 @@
 
 name: Build documentation
 description: >-
-  Build the HTML docs (latest release + development) and benchmarks, and upload
-  them as the `docs` artifact. The repository must already be checked out with
+  Build the HTML docs (latest release + development), and upload them as the
+  `docs` artifact. The repository must already be checked out with
   full history (fetch-depth 0) so hatch-vcs and `docs-latest` see the tags.
 
 runs:
   using: composite
   steps:
-    - name: Ensure main branch exists (for asv publish)
-      shell: bash
-      run: |
-        git branch main origin/main || true
-        git branch --set-upstream-to=origin/main main || true
-
     - name: Install uv
       uses: ./.github/actions/setup-uv
 
@@ -82,13 +76,6 @@ runs:
         echo "R_HOME=$(R RHOME)" >> "$GITHUB_ENV"
         echo "LD_LIBRARY_PATH=$(R RHOME)/lib:${JAVA_HOME}/lib/server${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
-    - name: Generate benchmarks visualization
-      # asv-discover writes benchmarks.json so `asv publish` has a target even
-      # with no committed results (e.g. this fresh repo); once benchmark runs
-      # are committed it renders those too.
-      shell: bash
-      run: RPY2_CFFI_MODE=ABI make asv-discover asv-publish
-
     - name: Generate documentation
       shell: bash
       run: RPY2_CFFI_MODE=ABI make docs docs-latest
@@ -105,5 +92,4 @@ runs:
         path: |
           _site/docs
           _site/docs-dev
-          _site/benchmarks
         if-no-files-found: error

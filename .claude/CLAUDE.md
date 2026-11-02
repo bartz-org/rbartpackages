@@ -69,7 +69,7 @@ The R dependencies are pinned in `renv.lock` (regenerate via renv, do not hand-e
     - prefer tuples to lists; make dataclasses frozen unless mutability is needed
     - prefer `if ...: return; else: return` to early returns for readability
 - **_src-like layout:** don't prepend redundant underscores to private functions (the facades already gate the public surface); when adding a public symbol, also re-export it in the facade
-- **WORKAROUND markers:** comments like `# WORKAROUND(jax<99): remove this patch when we bump jax to v99`, enforced by `make lint` against the oldest supported version of the package (also works with python versions and rbartpackages itself)
+- **WORKAROUND markers:** comments like `# WORKAROUND(jax<99): remove this patch when we bump jax to v99`, enforced by `make lint` against the oldest supported version of the package (also works with python versions and uv)
 
 ## Testing
 
@@ -79,8 +79,3 @@ The R dependencies are pinned in `renv.lock` (regenerate via renv, do not hand-e
 - to compare vectors/matrices/tensors, use `tests.util.assert_close_matrices` (and `assert_different_matrices`) instead of numpy's `assert_allclose`
     - use `rtol`, add `atol` only when comparing values near zero
 - prefer the `assert_*` helpers from `tests.util` and `numpy.testing` to plain `assert` where appropriate
-
-## Benchmarks
-
-- in `benchmarks/`, managed by `asv`; currently a placeholder suite. Real benchmarks compare the speed of the wrapped R packages.
-- test them with `make asv-quick ARGS='--bench <pattern>'`

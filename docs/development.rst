@@ -113,24 +113,3 @@ predefined make target using :code:`ARGS`:
     make tests-old ARGS='-n0 -k test_gbart_fit'
 
 Where :code:`-n0` disables test parallelization.
-
-Benchmarks
-----------
-
-The benchmarks are managed with `asv <https://asv.readthedocs.io/en/latest>`_.
-The basic asv workflow is:
-
-.. code-block:: shell
-
-    uv run asv run      # run and save benchmarks on main branch
-    uv run asv publish  # create html report
-    uv run asv preview  # start a local server to view the report
-
-The most useful command during development is
-
-.. code-block:: shell
-
-    make asv-quick ARGS='--bench <pattern>'
-
-This runs only benchmarks whose name matches <pattern>, only once, within the
-working copy and current Python environment.

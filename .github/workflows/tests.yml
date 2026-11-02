@@ -278,36 +278,6 @@ jobs:
         id: deploy
         uses: ./.github/actions/deploy-site
 
-  benchmarks:
-    name: benchmarks-${{ matrix.id }}
-    runs-on: ${{ matrix.runs-on }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - id: latest
-            runs-on: ubuntu-latest
-            vars: ""
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          # full history with tags, so hatch-vcs can derive the version
-          fetch-depth: 0
-
-      - name: Install uv
-        uses: ./.github/actions/setup-uv
-        with:
-          cache-suffix: -${{ matrix.id }}
-
-      - name: Get machine information for asv
-        run: RPY2_CFFI_MODE=ABI uv run --dev python -m asv machine --yes
-
-      - name: Run asv in quick mode
-        run: ${{ matrix.vars }}make asv-quick
-
   dev-commands:
     runs-on: ubuntu-latest
 
@@ -378,7 +348,6 @@ jobs:
       - docs
       - covreport
       - diffcov
-      - benchmarks
       - dev-commands
     steps:
       - name: Do nothing

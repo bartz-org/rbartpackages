@@ -4,7 +4,6 @@
 # revs are frozen to commit SHAs (tags are mutable); update with
 # 'pre-commit autoupdate --freeze'
 
-exclude: '^\.asv/results/.+\.json$'
 default_stages: [pre-commit]
 default_install_hook_types: [pre-commit, commit-msg, pre-merge-commit]
 
