@@ -332,9 +332,11 @@ jobs:
 
       - name: Update locked dependencies
         env:
-          # renv::update re-resolves the GitHub remotes (BART3, missBART);
-          # authenticate the API to avoid anonymous rate limits.
+          # renv::update re-resolves the GitHub remotes (BART3, missBART), and
+          # pinact queries the actions' releases; authenticate the API to avoid
+          # anonymous rate limits.
           GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make update-deps
 
       - name: Bump oldest supported dependencies
