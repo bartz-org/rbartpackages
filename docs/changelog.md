@@ -33,6 +33,9 @@ SOFTWARE.
 
 ## 0.3.1 provisionary (2026-11-02)
 
+- small typing changes
+- drop dependency `typing_extensions`
+
 
 ## 0.3.0 Bayesian Alien Radioactive Tacos (2026-08-31)
 
