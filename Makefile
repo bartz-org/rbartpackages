@@ -160,7 +160,7 @@ SELECT = $(if $(GROUP),$(GROUP_$(GROUP)))
 NPROC ?= 2
 
 TESTS_VARS = COVERAGE_FILE=.coverage.$@$(if $(GROUP),-$(GROUP))
-TESTS_COMMAND = python -m pytest --cov --cov-context=test --dist=worksteal --durations=1000 --numprocesses=$(NPROC) $(SELECT)
+TESTS_COMMAND = python -m pytest --cov --dist=worksteal --durations=1000 --numprocesses=$(NPROC) $(SELECT)
 
 .PHONY: tests
 tests:
