@@ -102,7 +102,7 @@ dev = [
     # where actionlint finds it; absent it, actionlint silently skips shellcheck.
     "shellcheck-py>=0.11.0.1",
     # the soft-imported converters, so they are exercised by the test suite
-    "jax>=0.6.2",
+    "jax>=0.8.0",
     "polars[pandas,pyarrow]>=1.35.1",
 ]
 
