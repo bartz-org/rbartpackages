@@ -24,14 +24,49 @@
 
 """Pytest configuration."""
 
+from importlib.metadata import version as package_version
+from importlib.util import cache_from_source
 from re import fullmatch
-from sys import modules
+from sys import modules, version_info
 
 import numpy as np
 import pytest
-from jaxtyping import install_import_hook
+from jaxtyping import _import_hook, install_import_hook
+from packaging.version import Version
 
 from tests.util import int_seed, nnone
+
+# WORKAROUND(jaxtyping<=0.3.11): on Python 3.15 the import hook fails every
+# import, because it calls `cache_from_source` and overrides `source_to_code`
+# with their pre-3.15 signatures. Patch in the fix proposed upstream, see
+# https://github.com/patrick-kidger/jaxtyping/issues/409.
+if version_info >= (3, 15) and Version(package_version('jaxtyping')) <= Version(
+    '0.3.11'
+):
+    original_source_to_code = _import_hook._JaxtypingLoader.source_to_code
+
+    def optimized_cache_from_source(
+        typechecker_hash: str,
+        /,
+        path: str,
+        debug_override: object = None,  # noqa: ARG001, signature compatibility
+    ) -> str:
+        """Drop `debug_override`, removed from `cache_from_source` in 3.15."""
+        return cache_from_source(path, optimization=f'jaxtyping10{typechecker_hash}')
+
+    def source_to_code(
+        self: _import_hook._JaxtypingLoader,
+        data: bytes,
+        path: str,
+        fullname: str | None = None,  # noqa: ARG001, signature compatibility
+        *,
+        _optimize: int = -1,
+    ) -> object:
+        """Accept `fullname`, passed by `get_code` since 3.15."""
+        return original_source_to_code(self, data, path, _optimize=_optimize)
+
+    _import_hook._optimized_cache_from_source = optimized_cache_from_source
+    _import_hook._JaxtypingLoader.source_to_code = source_to_code
 
 # Check the jaxtyping annotations (dtypes and shapes) against the actual values
 # at runtime, with `tests.util.typechecker` (beartype) as the checker. The hook
