@@ -45,14 +45,14 @@ if version_info >= (3, 15) and Version(package_version('jaxtyping')) <= Version(
 ):
     original_source_to_code = _import_hook._JaxtypingLoader.source_to_code
 
-    def optimized_cache_from_source(
-        typechecker_hash: str,
-        /,
+    def cache_from_source_315(
         path: str,
         debug_override: object = None,  # noqa: ARG001, signature compatibility
+        *,
+        optimization: object = None,
     ) -> str:
         """Drop `debug_override`, removed from `cache_from_source` in 3.15."""
-        return cache_from_source(path, optimization=f'jaxtyping10{typechecker_hash}')
+        return cache_from_source(path, optimization=optimization)
 
     def source_to_code(
         self: _import_hook._JaxtypingLoader,
@@ -65,7 +65,7 @@ if version_info >= (3, 15) and Version(package_version('jaxtyping')) <= Version(
         """Accept `fullname`, passed by `get_code` since 3.15."""
         return original_source_to_code(self, data, path, _optimize=_optimize)
 
-    _import_hook._optimized_cache_from_source = optimized_cache_from_source
+    _import_hook.cache_from_source = cache_from_source_315
     _import_hook._JaxtypingLoader.source_to_code = source_to_code
 
 # Check the jaxtyping annotations (dtypes and shapes) against the actual values
