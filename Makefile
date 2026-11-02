@@ -98,6 +98,7 @@ help:
 	@echo "- $$ make setup (needed for make update-deps if clean worktree)"
 	@echo "- $$ make update-deps"
 	@echo "- $$ make release, will not release but runs all tests, iterate and debug"
+	@echo "- pull R packages repos and check for changes missed by tests"
 	@echo "- merge a PR with the changes"
 	@echo "- on main: $$ make release"
 	@echo "- merge fix PR and try again until make release passes"
