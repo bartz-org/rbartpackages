@@ -24,7 +24,7 @@
 
 # Makefile for running tests, prepare and upload a release.
 
-# Refuse -j: recipes manage their own parallelism (pytest-xdist, asv) and the
+# Refuse -j: recipes manage their own parallelism (pytest-xdist) and the
 # release pipeline relies on serial prerequisite order (e.g. build before
 # check-dist). Global because GNU make <4.4 can't scope .NOTPARALLEL to a target.
 .NOTPARALLEL:
@@ -57,7 +57,7 @@ COOLDOWN_DAYS = 7
 # define command to run python with oldest supported dependencies
 # OLD_DATE / OLD_DELAY_DAYS / BUMP_PYTHON_VERSION_DATE / NUM_SUPPORTED_PYTHON_RELEASES
 # drive the `update-oldest-deps` policy.
-OLD_DATE = 2025-10-03T00:00:00Z
+OLD_DATE = 2025-11-02T00:00:00Z
 OLD_DELAY_DAYS = 365
 BUMP_PYTHON_VERSION_DATE = 10-31
 NUM_SUPPORTED_PYTHON_RELEASES = 5
@@ -77,7 +77,7 @@ help:
 	@echo "- diffcov: check changed-lines coverage vs DIFF_BASE (default origin/main)"
 	@echo "- update-deps: update-python-deps + update-other-deps"
 	@echo "- update-python-deps: pin the dep cooldown, then upgrade uv.lock to the latest allowed deps"
-	@echo "- update-other-deps: upgrade renv.lock and pre-commit hooks (not date-pinned)"
+	@echo "- update-other-deps: upgrade renv.lock, pre-commit hooks, and GitHub Actions (not date-pinned)"
 	@echo "- update-oldest-deps: advance OLD_DATE and refresh oldest-supported pins in pyproject.toml"
 	@echo "- check-committed: verify there are no uncommitted changes"
 	@echo "- check-changelog: verify the topmost changelog section is dated today"
@@ -89,13 +89,6 @@ help:
 	@echo "- upload: upload release to PyPI"
 	@echo "- upload-test: upload release to TestPyPI"
 	@echo "- gh-release: create draft GitHub release from docs/changelog.md"
-	@echo "- asv-machine: initialize ~/.asv-machine.json with a human-readable id"
-	@echo "- asv-run: run benchmarks on all unbenchmarked tagged releases and main"
-	@echo "- asv-discover: write benchmarks.json (discovery only) so asv-publish has a target"
-	@echo "- asv-publish: create html benchmark report"
-	@echo "- asv-preview: create html report and start server"
-	@echo "- asv-main: run benchmarks on main branch"
-	@echo "- asv-quick: run quick benchmarks on current code, no saving"
 	@echo "- ipython: start an ipython shell with stuff pre-imported"
 	@echo "- ipython-old: start an ipython shell with oldest supported python and dependencies"
 	@echo "- lint: run pre-commit hooks on all files"
@@ -105,8 +98,8 @@ help:
 	@echo "- $$ make setup (needed for make update-deps if clean worktree)"
 	@echo "- $$ make update-deps"
 	@echo "- $$ make release, will not release but runs all tests, iterate and debug"
+	@echo "- pull R packages repos and check for changes missed by tests"
 	@echo "- merge a PR with the changes"
-	@echo "- do a PR that re-runs benchmarks"
 	@echo "- on main: $$ make release"
 	@echo "- merge fix PR and try again until make release passes"
 	@echo "- publish the draft github release created by make release"
@@ -160,7 +153,7 @@ SELECT = $(if $(GROUP),$(GROUP_$(GROUP)))
 NPROC ?= 2
 
 TESTS_VARS = COVERAGE_FILE=.coverage.$@$(if $(GROUP),-$(GROUP))
-TESTS_COMMAND = python -m pytest --cov --cov-context=test --dist=worksteal --durations=1000 --numprocesses=$(NPROC) $(SELECT)
+TESTS_COMMAND = python -m pytest --cov --dist=worksteal --durations=1000 --numprocesses=$(NPROC) $(SELECT)
 
 .PHONY: tests
 tests:
@@ -233,12 +226,13 @@ diffcov:
 
 ################# DEPENDENCIES #################
 
-# `update-deps` = latest python deps (uv) + everything else (renv, pre-commit).
-# Only `update-python-deps` runs inside `release`: it pins pyproject's
-# exclude-newer to a fixed instant before locking, so repeated same-day release
-# runs (and the uv-lock hook) resolve identically and don't churn. renv and
-# pre-commit have no date knob, so they're bumped once by hand via
+# `update-deps` = latest python deps (uv) + everything else (renv, pre-commit,
+# GitHub Actions). Only `update-python-deps` runs inside `release`: it pins
+# pyproject's exclude-newer to a fixed instant before locking, so repeated
+# same-day release runs (and the uv-lock hook) resolve identically and don't
+# churn. The others have no fixed-date knob, so they're bumped once by hand via
 # `make update-deps` at the start of the release, outside the release loop.
+PINACT = PINACT_MIN_AGE=$(COOLDOWN_DAYS) GITHUB_TOKEN=$${GITHUB_TOKEN:-$$(gh auth token)} $(UV_RUN) pre-commit run pinact --hook-stage manual --all-files
 .PHONY: update-deps
 update-deps: update-python-deps update-other-deps
 
@@ -257,6 +251,9 @@ update-other-deps:
 	$(WITH_GITHUB_PAT) Rscript -e 'renv::update(prompt = FALSE); renv::snapshot(prompt = FALSE); stopifnot(isTRUE(renv::update(check = TRUE)), renv::status()$$synchronized)'
 	# --freeze pins revs to commit SHAs (tags are mutable)
 	$(UV_RUN) pre-commit autoupdate --freeze
+	# Update GitHub Actions, skipping releases newer than the cooldown. pre-commit
+	# fails a hook that modifies files, so a second run checks it now passes.
+	$(PINACT) || $(PINACT)
 
 .PHONY: update-oldest-deps
 update-oldest-deps:
@@ -349,42 +346,6 @@ upload-test: version-tag check-dist smoke-test
 .PHONY: gh-release
 gh-release: push-tag
 	$(UV_RUN) python config/util.py gh_release --today=$(TODAY)
-
-
-################# BENCHMARKS #################
-
-ASV = $(UV_RUN) python -m asv
-
-.PHONY: asv-machine
-asv-machine:
-	$(UV_RUN) python config/asv_machine.py
-
-.PHONY: asv-run
-asv-run: ASV_REFS = $(shell $(UV_RUN) python config/refs_for_asv.py)
-asv-run: asv-machine
-	$(ASV) run --durations=all --skip-existing-successful --show-stderr "$(ASV_REFS)" $(ARGS)
-
-.PHONY: asv-discover
-asv-discover: asv-machine
-	# Write .asv/results/benchmarks.json (discovery only, no timing) using the
-	# current env, so `asv publish` has a target even with no committed results.
-	$(ASV) run --python=same --bench just-discover $(ARGS)
-
-.PHONY: asv-publish
-asv-publish:
-	$(ASV) publish $(ARGS)
-
-.PHONY: asv-preview
-asv-preview: asv-publish
-	$(ASV) preview $(ARGS)
-
-.PHONY: asv-main
-asv-main: asv-machine
-	$(ASV) run --show-stderr main^! $(ARGS)
-
-.PHONY: asv-quick
-asv-quick: asv-machine
-	$(ASV) run --durations=all --python=same --quick --dry-run --show-stderr $(ARGS)
 
 
 ################# IPYTHON SHELL #################

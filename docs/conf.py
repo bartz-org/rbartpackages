@@ -28,18 +28,20 @@
 # list see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-import datetime
+import datetime as dt
 import pathlib
 import re
 import sys
-from contextlib import chdir  # ty: ignore[unresolved-import] (runs in py 3.14)
+from contextlib import chdir
 from enum import Enum
 from functools import cached_property
+from importlib.metadata import version as package_version
 from inspect import getsourcefile, getsourcelines, isclass, unwrap
 from os import getenv
 from typing import Any
 
 from docutils import nodes
+from packaging.version import Version
 from sphinx.ext.intersphinx import missing_reference
 
 # -- Version info ------------------------------------------------------------
@@ -69,7 +71,7 @@ with chdir(REPO_ROOT):
 project = f'rbartpackages {version}'
 author = 'The rbartpackages Contributors'
 
-NOW = datetime.datetime.now(tz=datetime.timezone.utc)
+NOW = dt.datetime.now(tz=dt.UTC)
 YEAR = '2024'
 if NOW.year > int(YEAR):
     YEAR += '-' + str(NOW.year)
@@ -93,7 +95,10 @@ extensions = [
 # have __module__='typing' and __qualname__='Union', so build_type_mapping()
 # creates a bogus mapping that renders every Union as that alias.
 # See https://github.com/tox-dev/sphinx-autodoc-typehints/issues/677.
-if sys.version_info >= (3, 14):
+UNION_ALIAS_BUG = sys.version_info >= (3, 14) and Version(
+    package_version('sphinx-autodoc-typehints')
+) < Version('3.10.0')
+if UNION_ALIAS_BUG:
     import importlib as _importlib
     import types as _types
 
@@ -153,7 +158,7 @@ def _link_uninventoried_modules(_app, _env, node, contnode) -> nodes.reference |
 
 
 def setup(app) -> None:  # noqa: ANN001
-    if sys.version_info >= (3, 14):
+    if UNION_ALIAS_BUG:
         # priority 501 runs after validate_config (default 500) which populates
         # the mapping
         app.connect(

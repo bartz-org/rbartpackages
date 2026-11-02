@@ -38,7 +38,7 @@ Outputs:
 """
 
 import argparse
-import datetime
+import datetime as dt
 import re
 import sys
 from pathlib import Path
@@ -57,21 +57,21 @@ def parse_bump_date(s: str) -> tuple[int, int]:
         msg = f'invalid --bump-date {s!r}, expected MM-DD'
         raise argparse.ArgumentTypeError(msg)
     month, day = int(m.group(1)), int(m.group(2))
-    datetime.date(2000, month, day)  # validate
+    dt.date(2000, month, day)  # validate
     return month, day
 
 
-def parse_datetime(s: str) -> datetime.datetime:
+def parse_datetime(s: str) -> dt.datetime:
     """Parse an RFC 3339 timestamp, requiring an explicit timezone offset."""
-    dt = datetime.datetime.fromisoformat(s.replace('Z', '+00:00'))
-    if dt.tzinfo is None:
+    when = dt.datetime.fromisoformat(s)
+    if when.tzinfo is None:
         msg = f'timestamp {s!r} must include a timezone offset'
         raise argparse.ArgumentTypeError(msg)
-    return dt
+    return when
 
 
 def compute_latest_minor(
-    today: datetime.date, bump: tuple[int, int], anchor_year: int, anchor_latest: int
+    today: dt.date, bump: tuple[int, int], anchor_year: int, anchor_latest: int
 ) -> int:
     bumps = today.year - anchor_year
     if (today.month, today.day) >= bump:
@@ -154,7 +154,7 @@ def main() -> int:
     args = parser.parse_args()
 
     # the bump date is a UTC calendar day, so resolve the instant in UTC
-    today = args.today.astimezone(datetime.timezone.utc).date()
+    today = args.today.astimezone(dt.UTC).date()
     latest_minor = compute_latest_minor(
         today, args.bump_date, ANCHOR_YEAR, ANCHOR_LATEST_MINOR
     )

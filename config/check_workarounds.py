@@ -24,20 +24,17 @@
 
 """Report obsolete `WORKAROUND(pkg<ver)` / `WORKAROUND(pkg<=ver)` markers.
 
-A marker is obsolete given the current floors in pyproject.toml plus the
-floor for `rbartpackages` itself (= oldest version benchmarked by ASV).
+A marker is obsolete given the current floors in pyproject.toml plus the uv
+version pinned by pre-commit.
 
 Marker grammar:
     WORKAROUND(<pkg><op><version>): <free-text>
 with <op> in {<, <=}. A marker is obsolete iff every supported version of
 <pkg> (i.e., versions >= the floor) satisfies NOT (version <op> <version>).
-The floor for dependencies and `python` comes from pyproject.toml; the floor
-for `rbartpackages` comes from the oldest version tag benchmarked by ASV (see
-`refs_for_asv.py`). Markers that do not fit the grammar are reported as
-malformed rather than silently ignored.
+The floor for dependencies and `python` comes from pyproject.toml. Markers that
+do not fit the grammar are reported as malformed rather than silently ignored.
 """
 
-import contextlib
 import re
 import subprocess
 import sys
@@ -47,7 +44,6 @@ import tomli
 from packaging.requirements import Requirement
 from packaging.specifiers import SpecifierSet
 from packaging.version import InvalidVersion, Version
-from refs_for_asv import oldest_benchmarked_version
 
 # Loose pattern: find any `WORKAROUND(...)` candidate to inspect.
 CANDIDATE_RE = re.compile(r'WORKAROUND\(([^)]*)\)')
@@ -137,14 +133,8 @@ def uv_floor(root: Path) -> Version:
 
 
 def collect_floors(root: Path) -> dict[str, Version]:
-    """Floors for dependencies (pyproject.toml), `rbartpackages` (oldest ASV tag), `uv` (pre-commit pin)."""
-    floors = floors_from_pyproject(root / 'pyproject.toml')
-    # No benchmarked version tags yet (e.g. before the first release) leaves the
-    # `rbartpackages` self-floor simply unavailable.
-    with contextlib.suppress(IndexError):
-        floors['rbartpackages'] = oldest_benchmarked_version(root)
-    floors['uv'] = uv_floor(root)
-    return floors
+    """Floors for dependencies (pyproject.toml) and `uv` (pre-commit pin)."""
+    return dict(floors_from_pyproject(root / 'pyproject.toml'), uv=uv_floor(root))
 
 
 def main() -> int:

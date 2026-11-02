@@ -28,8 +28,7 @@ from collections.abc import Callable, Set
 from dataclasses import dataclass
 from inspect import Parameter, signature
 from operator import ge, le
-from sys import version_info
-from typing import Any, Literal, TypeAlias, TypeVar, Union, get_args, get_origin
+from typing import Any, Literal, Self, TypeAlias, TypeVar
 
 import numpy as np
 from beartype import BeartypeConf, FrozenDict, beartype
@@ -39,27 +38,6 @@ from numpy.linalg import norm
 from numpy.testing import assert_allclose as _np_assert_allclose  # noqa: TID251
 from numpy.testing import assert_array_equal as _np_assert_array_equal  # noqa: TID251
 from numpy.typing import ArrayLike, NDArray
-
-# WORKAROUND(python<3.11): import Self, Unpack from typing
-from typing_extensions import Self, Unpack
-
-
-# WORKAROUND(python<3.11): on 3.10 `typing_extensions.Unpack` passes itself off
-# as a `typing.TypeVar`, and beartype rejects the hint hard enough to fail the
-# decoration of the whole function. Standing in the union of the TypedDict's
-# value types is coarser than the per-keyword check beartype does natively on
-# 3.11+, but it keeps the rest of the signature checked. Drop this function and
-# its use in `typechecker` together.
-def unpack_overrides(func: Callable) -> dict[Any, Any]:
-    """Map each ``Unpack[TypedDict]`` annotation of `func` to a coarser hint."""
-    if version_info >= (3, 11):
-        return {}
-    else:
-        return {
-            hint: Union[tuple(get_args(hint)[0].__annotations__.values())]  # noqa: UP007
-            for hint in func.__annotations__.values()
-            if get_origin(hint) is Unpack
-        }
 
 
 def typechecker(func: Callable) -> Callable:
@@ -76,7 +54,7 @@ def typechecker(func: Callable) -> Callable:
     The override is a forward reference, resolved in each decorated method's
     module, which is where beartype would look for the class anyway.
     """
-    overrides = {Self: 'RObjectBase', **unpack_overrides(func)}
+    overrides = {Self: 'RObjectBase'}
     return beartype(conf=BeartypeConf(hint_overrides=FrozenDict(overrides)))(func)
 
 

@@ -33,7 +33,7 @@ current lower bound).
 """
 
 import argparse
-import datetime
+import datetime as dt
 import json
 import re
 import sys
@@ -59,24 +59,24 @@ REQUIREMENT_RE = re.compile(
 )
 
 
-def parse_datetime(s: str) -> datetime.datetime:
+def parse_datetime(s: str) -> dt.datetime:
     """Parse an RFC 3339 timestamp, requiring an explicit timezone offset."""
-    dt = datetime.datetime.fromisoformat(s.replace('Z', '+00:00'))
-    if dt.tzinfo is None:
+    when = dt.datetime.fromisoformat(s)
+    if when.tzinfo is None:
         msg = f'timestamp {s!r} must include a timezone offset'
         raise argparse.ArgumentTypeError(msg)
-    return dt
+    return when
 
 
-def format_utc(dt: datetime.datetime) -> str:
+def format_utc(when: dt.datetime) -> str:
     """Format an instant as an RFC 3339 UTC timestamp with a trailing `Z`."""
-    return dt.astimezone(datetime.timezone.utc).isoformat().replace('+00:00', 'Z')
+    return when.astimezone(dt.UTC).isoformat().replace('+00:00', 'Z')
 
 
 def compute_old_date(
-    min_old_date: datetime.datetime, delay_days: int, today: datetime.datetime
-) -> datetime.datetime:
-    return max(today - datetime.timedelta(days=delay_days), min_old_date)
+    min_old_date: dt.datetime, delay_days: int, today: dt.datetime
+) -> dt.datetime:
+    return max(today - dt.timedelta(days=delay_days), min_old_date)
 
 
 def collect_requirements(pyproject: dict) -> list[str]:
@@ -122,7 +122,7 @@ def fetch_pypi(name: str) -> dict:
         return json.load(resp)
 
 
-def earliest_upload(files: list[dict]) -> datetime.datetime | None:
+def earliest_upload(files: list[dict]) -> dt.datetime | None:
     times = []
     for f in files:
         if f.get('yanked'):
@@ -130,15 +130,13 @@ def earliest_upload(files: list[dict]) -> datetime.datetime | None:
         t = f.get('upload_time_iso_8601') or f.get('upload_time')
         if not t:
             continue
-        # strip trailing 'Z' and optional fractional seconds handled by fromisoformat in 3.11+
-        t = t.replace('Z', '+00:00')
         try:
-            dt = datetime.datetime.fromisoformat(t)
+            when = dt.datetime.fromisoformat(t)
         except ValueError:
             continue
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=datetime.timezone.utc)
-        times.append(dt)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=dt.UTC)
+        times.append(when)
     return min(times) if times else None
 
 
@@ -167,7 +165,7 @@ def release_supports_python(files: list[dict], oldest_python: Version) -> bool:
 
 
 def latest_before(
-    name: str, cutoff: datetime.datetime, oldest_python: Version
+    name: str, cutoff: dt.datetime, oldest_python: Version
 ) -> Version | None:
     """Return the latest final release of `name` matching the constraints.
 
@@ -235,7 +233,7 @@ def update_pyproject(pyproject_path: Path, updates: list[tuple[str, str]]) -> in
     return changed
 
 
-def update_makefile_old_date(makefile_path: Path, new_date: datetime.datetime) -> bool:
+def update_makefile_old_date(makefile_path: Path, new_date: dt.datetime) -> bool:
     text = makefile_path.read_text()
     pattern = re.compile(r'^OLD_DATE\s*=\s*\S+\s*$', re.MULTILINE)
     new_line = f'OLD_DATE = {format_utc(new_date)}'

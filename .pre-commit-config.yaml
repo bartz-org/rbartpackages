@@ -4,7 +4,6 @@
 # revs are frozen to commit SHAs (tags are mutable); update with
 # 'pre-commit autoupdate --freeze'
 
-exclude: '^\.asv/results/.+\.json$'
 default_stages: [pre-commit]
 default_install_hook_types: [pre-commit, commit-msg, pre-merge-commit]
 
@@ -36,7 +35,7 @@ repos:
         exclude: '^renv/activate\.R$' # because renv edits it automatically, with trailing whitespace
       - id: no-commit-to-branch
   - repo: https://github.com/sbrunner/hooks
-    rev: 60041b789c098988bd01ddff70e7e3a31c1700f1  # frozen: 1.8.0
+    rev: 9d1d542e586fff7fee6b2eec75bb718350e46f09  # frozen: 1.9.0
     hooks:
       - id: copyright
       - id: copyright-required
@@ -45,7 +44,7 @@ repos:
         # an explicit `pre-commit run --files`
         exclude: src/rbartpackages/_version\.py$
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: f12be1ebaa5351c1fc76472de98db2c3446c8253  # frozen: v0.16.10
+    rev: 25bcf95026b96e2dd3c0aec3090c3d6ef6ca2e6c  # frozen: v0.17.3
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -59,11 +58,11 @@ repos:
         # attribute-docstring conventions this enforces; drop `files` to widen.
         files: ^src/rbartpackages/.*\.py$
   - repo: https://github.com/jsh9/pydoclint
-    rev: 24412c5f73ad438a08146132ea86a9a72c8bd5ad  # frozen: 0.11.0
+    rev: 23559aa13b43576987f1bcdf28c533f74fd30c56  # frozen: 0.12.0
     hooks:
       - id: pydoclint
   - repo: https://github.com/henryiii/validate-pyproject-schema-store
-    rev: ae9c8c7039f4ec4ae005660c80dbcb954f61da5a  # frozen: 2026.10.02
+    rev: 1f2b6ab5a6189525ce4ac4db58c2c1cb5c7ca48c  # frozen: 2026.10.30
     hooks:
       - id: validate-pyproject
   - repo: https://github.com/jorisroovers/gitlint
@@ -76,7 +75,7 @@ repos:
   # the one that reads it on ci cannot drift apart. Both parse the comment on
   # the line right below the repo, keep it there.
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0f4b65a503cc866b9b5e62dda2020f7943b01a65  # frozen: 0.12.22
+    rev: 46787482b9fb2003c56e0f7592e312ef381829d9  # frozen: 0.13.6
     hooks:
       - id: uv-lock
   - repo: https://github.com/rhysd/actionlint
@@ -99,6 +98,21 @@ repos:
         pass_filenames: false
         always_run: true
         stages: [pre-merge-commit]
+      - id: pinact
+        name: update GitHub Actions and pin them to commit SHAs
+        # manual-only, run by `make update-other-deps`, which sets the cooldown
+        # (PINACT_MIN_AGE) and GITHUB_TOKEN. Not covered by `pre-commit
+        # autoupdate`: bump the pinact commit below by hand.
+        entry: pinact run --update
+        language: golang
+        # pinact's go.mod minimum; pre-commit downloads this exact Go version
+        # (the system Go on the CI runners is too old to build pinact)
+        language_version: 1.27.1
+        additional_dependencies:
+          - github.com/suzuki-shunsuke/pinact/v5/cmd/pinact@a4f45e095b184794ac1f82b6b07cc35b0b8cfe7b # v5.0.0
+        pass_filenames: false
+        always_run: true
+        stages: [manual]
       - id: check-workarounds
         name: check stale WORKAROUND markers
         entry: uv run --dev python config/check_workarounds.py

@@ -23,7 +23,7 @@
 # SOFTWARE.
 
 import argparse
-import datetime
+import datetime as dt
 import re
 import subprocess
 from pathlib import Path
@@ -31,13 +31,13 @@ from pathlib import Path
 CHANGELOG_PATH = Path('docs/changelog.md')
 
 
-def parse_datetime(s: str) -> datetime.datetime:
+def parse_datetime(s: str) -> dt.datetime:
     """Parse an RFC 3339 timestamp, requiring an explicit timezone offset."""
-    dt = datetime.datetime.fromisoformat(s.replace('Z', '+00:00'))
-    if dt.tzinfo is None:
+    when = dt.datetime.fromisoformat(s)
+    if when.tzinfo is None:
         msg = f'timestamp {s!r} must include a timezone offset'
         raise argparse.ArgumentTypeError(msg)
-    return dt
+    return when
 
 
 def get_version() -> str:
@@ -59,7 +59,7 @@ def _parse_changelog_header(line: str) -> tuple[str, str, str]:
     return m[1], m[2], m[3]
 
 
-def _read_changelog_section(today: datetime.date) -> tuple[str, str, str, str]:
+def _read_changelog_section(today: dt.date) -> tuple[str, str, str, str]:
     """Read and validate the topmost changelog section.
 
     Returns ``(version, title, date, body)``. Raises ValueError if the
@@ -86,12 +86,12 @@ def _read_changelog_section(today: datetime.date) -> tuple[str, str, str, str]:
     return version, title, date, body
 
 
-def check_changelog(today: datetime.date) -> None:
+def check_changelog(today: dt.date) -> None:
     """Validate the topmost changelog section is parseable and dated ``today``."""
     _read_changelog_section(today)
 
 
-def gh_release(today: datetime.date) -> None:
+def gh_release(today: dt.date) -> None:
     """Create a draft GitHub release from the topmost changelog section."""
     version, title, _date, body = _read_changelog_section(today)
     subprocess.run(  # noqa: S603
@@ -130,7 +130,7 @@ def main() -> None:
     else:
         if args.today is None:
             parser.error(f'{args.command} requires --today')
-        today = args.today.astimezone(datetime.timezone.utc).date()
+        today = args.today.astimezone(dt.UTC).date()
         if args.command == 'check_changelog':
             check_changelog(today)
         elif args.command == 'gh_release':

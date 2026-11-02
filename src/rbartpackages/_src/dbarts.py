@@ -26,7 +26,16 @@
 
 from collections.abc import Sequence
 from functools import partial
-from typing import Literal, NamedTuple, cast, no_type_check, overload
+from typing import (
+    Literal,
+    NamedTuple,
+    NotRequired,
+    Self,
+    TypedDict,
+    cast,
+    no_type_check,
+    overload,
+)
 
 from jaxtyping import Bool, Float64, Int32, Integer
 from numpy import ndarray
@@ -35,9 +44,6 @@ from rpy2.rlike.container import NamedList
 from rpy2.robjects.language import LangVector
 from rpy2.robjects.methods import RS4
 from rpy2.robjects.vectors import FactorVector, ListVector
-
-# WORKAROUND(python<3.11): import NotRequired, Self, TypedDict from typing
-from typing_extensions import NotRequired, Self, TypedDict
 
 from rbartpackages._src.base import (
     DataFrame,
@@ -943,9 +949,6 @@ class _BartBase(RObjectBase):
     varcount: Int32[ndarray, 'ndpost p'] | Int32[ndarray, 'nchain ndpost p']
     """Per-draw count of splits on each variable, summed over trees."""
 
-    y: Float64[ndarray, ' n'] | None = None
-    """The training responses (continuous outcomes only)."""
-
     yhat_test: (
         Float64[ndarray, 'ndpost m'] | Float64[ndarray, 'nchain ndpost m'] | None
     ) = None
@@ -1171,6 +1174,9 @@ class bart(_BartBase):
 
     fit: dbarts | None = None
     """The sampler as a `dbarts` object, kept only with ``keeptrees`` or ``keepsampler``."""
+
+    y: Float64[ndarray, ' n'] | None = None
+    """The training responses (continuous outcomes only)."""
 
     def __init__(
         self,

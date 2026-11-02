@@ -31,6 +31,13 @@ SOFTWARE.
 # Changelog
 
 
+## 0.3.1 Beltsville Agricultural Research Tacchinis (2026-11-02)
+
+- small typing changes
+- drop dependency `typing_extensions`
+- drop Python 3.10 support
+
+
 ## 0.3.0 Bayesian Alien Radioactive Tacos (2026-08-31)
 
 - fix typing issues

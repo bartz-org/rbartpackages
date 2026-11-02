@@ -32,27 +32,27 @@ value both agree on, anchored to the UTC day so same-day runs are reproducible.
 """
 
 import argparse
-import datetime
+import datetime as dt
 import re
 import sys
 from pathlib import Path
 
 
-def parse_datetime(s: str) -> datetime.datetime:
+def parse_datetime(s: str) -> dt.datetime:
     """Parse an RFC 3339 timestamp, requiring an explicit timezone offset."""
-    dt = datetime.datetime.fromisoformat(s.replace('Z', '+00:00'))
-    if dt.tzinfo is None:
+    when = dt.datetime.fromisoformat(s)
+    if when.tzinfo is None:
         msg = f'timestamp {s!r} must include a timezone offset'
         raise argparse.ArgumentTypeError(msg)
-    return dt
+    return when
 
 
-def format_utc(dt: datetime.datetime) -> str:
+def format_utc(when: dt.datetime) -> str:
     """Format an instant as an RFC 3339 UTC timestamp with a trailing `Z`."""
-    return dt.astimezone(datetime.timezone.utc).isoformat().replace('+00:00', 'Z')
+    return when.astimezone(dt.UTC).isoformat().replace('+00:00', 'Z')
 
 
-def pin_exclude_newer(pyproject_path: Path, cutoff: datetime.datetime) -> bool:
+def pin_exclude_newer(pyproject_path: Path, cutoff: dt.datetime) -> bool:
     """Rewrite the `exclude-newer` value in pyproject.toml; True if changed."""
     text = pyproject_path.read_text()
     pattern = re.compile(r'^exclude-newer = .*$', re.MULTILINE)
@@ -83,7 +83,7 @@ def main() -> int:
     parser.add_argument('--pyproject', type=Path, default=Path('pyproject.toml'))
     args = parser.parse_args()
 
-    cutoff = args.today - datetime.timedelta(days=args.cooldown_days)
+    cutoff = args.today - dt.timedelta(days=args.cooldown_days)
     changed = pin_exclude_newer(args.pyproject, cutoff)
     print(
         f'exclude-newer -> {format_utc(cutoff)} ({"updated" if changed else "unchanged"})'
